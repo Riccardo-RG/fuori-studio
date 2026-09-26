@@ -1,6 +1,6 @@
 # Fuori Studio
 
-Fuori Studio is a local 3D office for an AI team. Its block-style coworkers move between desks in a forest, on a beach, or in the mountains. A shared chat uses the Codex installation already signed in on your Mac.
+Fuori Studio is a local 3D office for an AI team. Its block-style coworkers work at the center of a sprawling anthill, surrounded by busy ants. Forest, beach, and mountain landscapes are also available. A shared chat uses the Codex installation already signed in on your Mac.
 
 ## Current status
 
@@ -24,13 +24,17 @@ Open **http://127.0.0.1:4386**. The server listens only on the local loopback in
 
 ## Use the office
 
-- Write in the shared chat. Noemi recognizes the context and responds or delegates relevant tasks.
-- Address a coworker directly, for example `@Viola`, without configuring roles or selecting a project for every message.
+- Write in the shared chat. Riccardo, the AI team leader, recognizes the context and responds or delegates relevant tasks.
+- Address a coworker directly, for example `@Big Fonz`, without configuring roles or selecting a project for every message.
 - Up to three specialists can work on independent responses in parallel. Their activity in the scene follows actual requests.
-- Switch between forest, beach, and mountain landscapes. Drag to rotate the scene; use the arrow keys to adjust the view and **R** or **Home** to reset it.
+- Explore the anthill (the default landscape), forest, beach, and mountains. The team stays at the center of a larger surrounding world. Ant activity is scenic animation, independent of AI requests.
+- Drag to rotate, use the wheel or **+ / −** buttons to zoom, and **Shift + drag** or right-drag to pan. On touchscreens, pinch to zoom and drag with two fingers to pan.
+- Use **Panorama** to see the full landscape and **Torna al team**, **R**, or **Home** to return to the team. Arrow keys adjust the view.
 - Select a coworker to see their role and start a direct message.
 - Quiet mode pauses character movement. The interface also respects the system's reduced-motion preference.
 - Use **Stop** to cancel a request. Responses already received remain in the conversation.
+
+The five AI coworkers are **Riccardo** (leader), **Raffaele** (research), **Big Fonz** (product and development), **D'albenzio** (content), and **Cicciolina** (business). Their internal identifiers stay unchanged so existing conversations remain associated with the same roles.
 
 ## Local data and Codex
 

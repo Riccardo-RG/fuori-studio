@@ -4,10 +4,10 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#f4f5ed">
   <title>Fuori Studio — Il mondo di Riccardo</title>
-  <meta name="description" content="Il tuo team AI, a cielo aperto. Un prototipo personale tra bosco, spiaggia e montagna per seguire progetti, idee e nuovi esperimenti.">
+  <meta name="description" content="Il tuo team AI nel cuore di un formicaio laborioso. Esplora un grande mondo 3D tra formicaio, bosco, spiaggia e montagna.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-landscape="anthill">
 <div class="app-shell">
   <div class="app-content">
     <header class="topbar"><a class="brand" href="#main"><img src="favicon.svg" alt=""><span>fuori<span class="brand-light">studio</span><small>LO STUDIO DI RICCARDO</small></span></a><nav class="top-nav" aria-label="Navigazione principale"><a href="#office-title">Lo studio</a><a href="#team-title">Il team</a><a href="#portfolio-title">I progetti</a></nav><div class="topbar-right"><span class="demo-badge" id="provider-badge">Codex · connessione</span><span class="user-avatar" aria-label="Riccardo">R</span></div></header>
@@ -15,18 +15,18 @@
       <section class="page-heading"><div><div class="eyebrow">UN PO’ DI ARIA. SPAZIO ALLE TUE IDEE.</div><h1>Oggi si lavora <em>fuori.</em></h1><p>Tu racconti l’obiettivo. Il team trova il prossimo passo.</p></div><button class="button primary" id="new-mission"><span aria-hidden="true">＋</span> Parla con il team</button></section>
       <div class="workspace">
         <section class="office-panel" aria-labelledby="office-title">
-          <div class="panel-top office-toolbar"><div class="panel-title"><span class="location-icon" aria-hidden="true">⌘</span><h2 id="office-title">Il nostro angolo di bosco</h2></div><div class="landscape-picker" role="group" aria-label="Scegli il paesaggio"><button class="landscape-button" data-landscape="forest" aria-pressed="true">Bosco</button><button class="landscape-button" data-landscape="beach" aria-pressed="false">Spiaggia</button><button class="landscape-button" data-landscape="mountain" aria-pressed="false">Montagna</button></div></div>
+          <div class="panel-top office-toolbar"><div class="panel-title"><span class="location-icon" aria-hidden="true">⌘</span><h2 id="office-title">Lo studio nel formicaio</h2></div><div class="landscape-picker" role="group" aria-label="Scegli il paesaggio"><button class="landscape-button" data-landscape="anthill" aria-pressed="true">Formicaio</button><button class="landscape-button" data-landscape="forest" aria-pressed="false">Bosco</button><button class="landscape-button" data-landscape="beach" aria-pressed="false">Spiaggia</button><button class="landscape-button" data-landscape="mountain" aria-pressed="false">Montagna</button></div></div>
           <div class="office-world" id="office-world">
             <div class="scene-backdrop"></div>
-            <div class="office-illustration" id="office-illustration" role="img" aria-label="Un team di personaggi a blocchi lavora in un mondo 3D immerso nella natura"></div>
-            <div class="scene-caption"><span id="landscape-label">SOTTO GLI ALBERI</span><span>Costruiamo qualcosa di bello.</span></div>
-            <div class="office-message" id="office-message"><span aria-hidden="true">✦</span> Un bel posto per iniziare qualcosa.</div>
-            <button id="reset-camera" class="icon-button camera-reset" aria-label="Ripristina vista iniziale">↺ <span>Vista iniziale</span></button><button id="focus-toggle" class="icon-button scene-focus" aria-pressed="false" title="Riduci le animazioni">◌ <span>Quiet mode</span></button>
+            <div class="office-illustration" id="office-illustration" role="img" aria-label="Un team al centro di un grande formicaio 3D, circondato da formiche laboriose" aria-describedby="camera-hint"></div>
+            <div class="scene-caption"><span id="landscape-label">FORMICAIO · STUDIO 01</span><span>Piccoli passi. Un grande mondo.</span></div>
+            <div class="office-message" id="office-message"><span aria-hidden="true">✦</span> Il team al centro. Un mondo da esplorare.</div>
+            <div class="camera-controls" role="group" aria-label="Controlli della vista"><button id="zoom-out" class="icon-button camera-zoom" aria-label="Allontana la vista" title="Allontana la vista">−</button><button id="zoom-in" class="icon-button camera-zoom" aria-label="Avvicina la vista" title="Avvicina la vista">＋</button><button id="world-overview" class="icon-button camera-overview" aria-pressed="false" aria-label="Mostra il panorama completo" title="Esplora tutto il paesaggio">⌗ <span>Panorama</span></button><button id="reset-camera" class="icon-button camera-reset" aria-label="Torna alla vista del team" title="Torna alla vista del team (R o Home)">↺ <span>Torna al team</span></button></div><button id="focus-toggle" class="icon-button scene-focus" aria-label="Riduci le animazioni" aria-pressed="false" title="Riduci le animazioni">◌ <span>Quiet mode</span></button>
           </div>
-          <div class="office-status"><span><span class="status-dot"></span> <strong id="team-status">5 colleghi pronti</strong><span class="status-extra"> · una squadra per le tue idee</span></span><span class="simulation-note">Trascina per ruotare · clicca un collega</span></div>
+          <div class="office-status"><span><span class="status-dot"></span> <strong id="team-status">5 colleghi pronti</strong><span class="status-extra"> · una squadra per le tue idee</span></span><span id="camera-hint" class="simulation-note">Trascina: ruota · rotella: zoom · Shift + trascina: sposta · touch: pizzica per lo zoom</span></div>
         </section>
         <aside class="mission-panel chat-panel" aria-labelledby="chat-title">
-          <div class="panel-top"><div class="panel-title"><span class="tiny-star">✳</span><div><h2 id="chat-title">Parliamone insieme.</h2><p class="chat-subtitle">Noemi coordina, il team collabora.</p></div></div><button id="new-chat" class="icon-button" aria-label="Inizia una nuova conversazione" title="La conversazione attuale viene conservata">＋</button></div>
+          <div class="panel-top"><div class="panel-title"><span class="tiny-star">✳</span><div><h2 id="chat-title">Parliamone insieme.</h2><p class="chat-subtitle">Riccardo guida, il team collabora.</p></div></div><button id="new-chat" class="icon-button" aria-label="Inizia una nuova conversazione" title="La conversazione attuale viene conservata">＋</button></div>
           <div class="chat-context"><span class="context-label">FOCUS</span><span id="chat-context">Lo riconosciamo dalla conversazione</span></div>
           <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversazione con lo studio"></div>
           <div id="chat-thinking" class="chat-thinking" role="status" hidden></div>

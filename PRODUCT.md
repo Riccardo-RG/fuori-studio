@@ -3,9 +3,11 @@
 ## Direzione concordata
 
 - App locale sul Mac; collegamenti a cartelle e GitHub nelle fasi successive.
-- Ufficio nella natura con paesaggi intercambiabili: bosco, spiaggia, montagna.
+- Ufficio al centro di un grande formicaio laborioso, paesaggio iniziale; restano disponibili bosco, spiaggia e montagna.
 - Grafica 3D stilizzata a blocchi, ispirata alla sensazione di gioco di Roblox; niente persone fotorealistiche o tema spaziale.
 - Colleghi visibilmente animati: camminano, lavorano alle postazioni e collaborano.
+- Mappa ampia attorno al team centrale, con zoom, spostamento della camera, panorama completo e ritorno rapido al team.
+- Formiche che percorrono sentieri e trasportano materiali attorno allo studio; la loro attività è scenografica.
 - Prima consolidare grafica e funzionamento dell'ufficio, poi completare un flusso reale end-to-end.
 - Le attività dimostrative devono essere distinguibili dalle vere esecuzioni AI.
 
@@ -28,19 +30,23 @@ Questi nomi e le schede del prototipo sono descrizioni di lavoro. Non attestano 
 
 ## Ruoli del team
 
-- Noemi: coordina gli incarichi e prepara le decisioni.
-- Dario: ricerca, fonti, alternative e trend.
-- Viola: prodotto, sviluppo e prove tecniche.
-- Leo: contenuti, idee e dimostrazioni.
-- Sofia: pubblico, distribuzione e ipotesi commerciali.
+- Riccardo: leader AI, coordina gli incarichi e prepara le decisioni.
+- Raffaele: ricerca, fonti, alternative e trend.
+- Big Fonz: prodotto, sviluppo e prove tecniche.
+- D'albenzio: contenuti, idee e dimostrazioni.
+- Cicciolina: pubblico, distribuzione e ipotesi commerciali.
 
 ## Prima versione funzionante
 
-La chat è l'ingresso principale dell'ufficio: Noemi risponde o riconosce il contesto e coinvolge gli specialisti utili. Gli incarichi indipendenti possono essere eseguiti in parallelo. L'utente può rivolgersi a una persona senza dover configurare ruoli e progetti a ogni messaggio.
+La chat è l'ingresso principale dell'ufficio: Riccardo, il leader AI, risponde o riconosce il contesto e coinvolge gli specialisti utili. Gli incarichi indipendenti possono essere eseguiti in parallelo. L'utente può rivolgersi a una persona senza dover configurare ruoli e progetti a ogni messaggio.
 
 Codex è installato e autenticato sul Mac. L'utente ha autorizzato esplicitamente l'uso di questo motore. La chat usa risposte AI reali tramite processi Codex effimeri in sola lettura, e salva la conversazione sul Mac.
 
-Il mondo Three.js a blocchi ha tre paesaggi, camera interattiva e colleghi articolati che camminano e lavorano. Gli stati di attività del team seguono le richieste effettive.
+Il mondo Three.js a blocchi ha quattro paesaggi, camera interattiva e colleghi articolati che camminano e lavorano. Gli stati di attività del team seguono le richieste effettive. Il formicaio è lo scenario iniziale: i colleghi occupano il centro, mentre sentieri e formiche laboriose animano il territorio circostante.
+
+La camera consente rotazione con trascinamento, zoom con rotella o pulsanti +/− e spostamento con Shift + trascinamento o tasto destro. Su touch si usano due dita per zoom e spostamento. I comandi Panorama e Torna al team passano dalla mappa completa alle postazioni centrali.
+
+I cinque personaggi conservano gli identificatori interni per mantenere le conversazioni esistenti. Nella cronologia inviata al motore AI, la persona è indicata come Utente e il leader come Riccardo. Si aggiorna soltanto il vecchio messaggio di benvenuto standard, senza riscrivere i messaggi scambiati.
 
 ## Confini attuali
 

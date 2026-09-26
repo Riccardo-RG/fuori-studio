@@ -26,3 +26,41 @@ body[data-landscape=beach]{--bg:#f6f4ea;--panel:#fffef7;--edge:#e4e2d3;--text:#3
 @media(max-width:1260px){.workspace{grid-template-columns:minmax(0,1fr) 348px;gap:17px}.chat-panel{height:725px}.office-world{min-height:580px}.chat-panel .panel-top{padding:15px}.chat-message-body{font-size:14px}.chat-messages{padding:16px}}
 @media(max-width:1050px){.workspace{grid-template-columns:1fr}.office-world{min-height:0;aspect-ratio:1.4}.chat-panel{height:640px}.chat-panel .mission-body{display:block}.chat-messages{padding:21px}.chat-composer{margin:0 20px}.chat-composer textarea{min-height:85px}.chat-starters{padding:0 20px 14px}}
 @media(max-width:600px){.office-world{aspect-ratio:1.08}.chat-panel{height:650px;max-height:84svh;min-height:470px}.chat-messages{padding:16px}.chat-composer{margin:0 12px}.chat-composer textarea{font-size:16px;min-height:89px}.chat-panel .panel-title h2{font-size:22px}.chat-message-body{font-size:14px}.chat-context{font-size:12px}.chat-starters{padding:0 14px 12px}.chat-starters button{font-size:12px}.chat-footer{font-size:11px}.chat-message-head time,.composer-bottom>span{font-size:11px}.chat-person{font-size:13px}.chat-subtitle{font-size:12px}.chat-context .context-label{font-size:10px}.chat-send{height:35px;width:35px}.office-message{font-size:10px}}
+
+/* An open landscape, with the studio at the heart of a working ant colony. */
+body[data-landscape=anthill]{--bg:#f3f0e7;--panel:#fffdf6;--edge:#e1ddcc;--text:#363f2c;--green:#51683c;--accent:#d7dcb0}
+body[data-landscape=anthill] .office-world{background:#dddfb4}
+body[data-landscape=anthill] .scene-caption{color:#505d32}
+.office-toolbar{flex-wrap:wrap;row-gap:10px}
+.office-toolbar .panel-title{min-width:0}
+.landscape-picker{flex-shrink:0}
+.camera-controls{position:absolute;top:18px;right:17px;z-index:6;display:flex;align-items:center;gap:3px;padding:4px;border:1px solid #fff9;border-radius:10px;background:#fffef2ed;box-shadow:0 3px 12px #34442112;backdrop-filter:blur(8px)}
+.camera-controls .icon-button{position:static;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;border:0;background:transparent;font-size:11px;padding:5px 9px;color:#536344;box-shadow:none}
+.camera-controls .icon-button:hover,.camera-controls .icon-button[aria-pressed=true]{background:#e1e8cc;color:#354c29}
+.camera-controls .camera-zoom{min-width:34px;padding:0;font-size:22px;line-height:1}
+.camera-controls .camera-overview{border-left:1px solid #dfe4d3;border-radius:0 5px 5px 0;margin-left:2px}
+.scene-caption{top:73px;left:20px}
+.scene-caption>span:last-child{font-style:normal}
+.office-status{align-items:flex-start}
+#camera-hint{max-width:265px;text-align:right;line-height:1.5}
+.leader-badge{display:inline-flex;align-items:center;border:1px solid #d3bb87;background:#f5e8c5;color:#796031;font-size:9px;font-weight:600;letter-spacing:.3px;padding:1px 5px;border-radius:4px;line-height:1.5;vertical-align:middle;margin-left:6px}
+.agent-card.is-leader{border-color:#d5c394}
+.agent-nameplate .leader-badge{font-size:8px;padding:0 3px}
+.distant-view .office-agent:not(:hover):not(:focus-visible) .agent-nameplate{font-size:0;gap:0;padding:4px;border-radius:50%;box-shadow:0 2px 5px #33452c26}
+.distant-view .office-agent:not(:hover):not(:focus-visible) .person-plus,.distant-view .office-agent:not(:hover):not(:focus-visible) .leader-badge{display:none}
+.distant-view .office-agent .person-dot{flex-shrink:0}
+@media(min-width:1400px){.scene-caption{top:23px;max-width:260px}.camera-controls{max-width:calc(100% - 295px)}}
+@media(max-width:600px){
+  .office-toolbar .panel-title{margin-bottom:10px}
+  .landscape-picker{width:100%;gap:2px}
+  .landscape-button{padding:7px 5px;font-size:12px;min-height:33px}
+  .camera-controls{top:11px;right:10px;left:10px;justify-content:flex-end;padding:3px;gap:2px;width:max-content;max-width:calc(100% - 20px);margin-left:auto}
+  .camera-controls .icon-button{min-height:36px;padding:4px 8px}
+  .camera-controls .camera-zoom{min-width:36px;font-size:23px}
+  .camera-controls .camera-reset>span{display:inline}
+  .scene-caption{top:67px;left:13px}
+  .scene-caption>span:last-child{max-width:230px}
+  #camera-hint{max-width:165px;font-size:9px}
+  .office-status{gap:7px}
+  .leader-badge{font-size:8px}
+}

@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 
-/* A small, entirely geometric toy world. No image assets or model loaders. */
-export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () => {} } = {}) {
+/* An explorable, entirely geometric miniature world. No external assets. */
+export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () => {}, onCameraChange = () => {} } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#dcebd9');
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -14,13 +14,15 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;outline:none;';
-  renderer.domElement.setAttribute('aria-label', 'Ufficio 3D: trascina per ruotare, seleziona un collega');
+  renderer.domElement.setAttribute('aria-label', 'Ufficio 3D nel formicaio: trascina per ruotare, rotella o più e meno per lo zoom, Maiusc e trascina per esplorare, due dita per zoom e movimento. Home torna allo studio.');
   renderer.domElement.tabIndex = 0;
   host.appendChild(renderer.domElement);
 
-  const camera = new THREE.OrthographicCamera(-14, 14, 12, -12, .1, 120);
+  const camera = new THREE.OrthographicCamera(-14, 14, 12, -12, .1, 240);
   let angle = .62, elevation = .72, width = 1, height = 1, quiet = false, disposed = false;
-  let theme = 'forest', selected = null, elapsed = 0, frame = 0;
+  let theme = 'anthill', selected = null, elapsed = 0, frame = 0;
+  let zoom = 1, overview = false;
+  const MIN_ZOOM = .22, MAX_ZOOM = 2.8;
   const lookAt = new THREE.Vector3(0, .45, 0);
   const mats = new Map();
   const geometryCache = new Map();
@@ -77,11 +79,11 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     });
   }
 
-  scene.add(new THREE.HemisphereLight('#e9f5ff', '#7d9851', 1.25));
+  scene.add(new THREE.HemisphereLight('#e9f5ff', '#7d9851', 1.5));
   const sun = new THREE.DirectionalLight('#fff0d4', 2.4);
-  sun.position.set(-9, 20, 13); sun.castShadow = true;
+  sun.position.set(-24, 45, 28); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 55 });
+  Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 38, bottom: -38, near: 1, far: 110 });
   sun.shadow.bias = -.00035; sun.shadow.normalBias = .025;
   scene.add(sun);
   const fill = new THREE.DirectionalLight('#d8efff', .36); fill.position.set(10, 8, -8); scene.add(fill);
@@ -89,10 +91,10 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   const foundation = group(scene);
   const baseMat = material('#a0b98f');
   const earthMat = material('#adbd94');
-  box(foundation, 0, -.78, 0, 23, 1.1, 18.5, earthMat);
-  box(foundation, 0, -.17, 0, 23.2, .18, 18.7, baseMat);
+  box(foundation, 0, -.78, 0, 60, 1.1, 50, earthMat);
+  box(foundation, 0, -.17, 0, 60.2, .18, 50.2, baseMat);
   // A dark green rim and small stepping stones make the floating island read as a toy.
-  box(foundation, 0, -1.36, 0, 22.7, .13, 18.2, '#4c683e');
+  box(foundation, 0, -1.36, 0, 59.7, .13, 49.7, '#4c683e');
   bake(foundation);
   const courtyard = group(scene);
   const pathMat = material('#e9d5a3');
@@ -247,7 +249,7 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   const labels = agents.map(a => a.position);
 
   // Landscape silhouettes live around the office, leaving the actors unobstructed.
-  const themes = { forest: group(scene), beach: group(scene), mountains: group(scene) };
+  const themes = { anthill: group(scene), forest: group(scene), beach: group(scene), mountains: group(scene) };
   function rock(g, x, z, s, color = '#a1aaa1', y = 0) { const r = mesh(g, geo('ico', 1, 0), color, x, y + s * .28, z); r.scale.set(s * .85, s * .54, s * .67); r.rotation.set(0, random() * 3, .13); }
   function flower(g, x, z, color, s = 1) {
     box(g, x, .18 * s, z, .045, .37 * s, .045, '#749766');
@@ -348,6 +350,191 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     if(Math.abs(x)>7 || z>6.4) { if(i%4) grass(mountains,x,z,.75,'#6ca447'); else flower(mountains,x,z,'#ede7cf',.8); }
   }
   [[-7,6.9,1.1],[10,4.5,.8],[-10,-.5,.9],[4.7,7,.6]].forEach(p=>rock(mountains,...p,'#a5b0a5'));
+  // Low rounded mounds, branching roads and supplies make this an ant colony,
+  // with the five desks occupying its open central clearing.
+  const anthill = themes.anthill;
+  const antRoads = [];
+  const antSystems = [];
+  function antRoad(points, width = .9, count = 20, speed = .8) {
+    const curve = new THREE.CatmullRomCurve3(points.map(([x, z]) => new THREE.Vector3(x, .07, z)), true, 'centripetal');
+    curve.arcLengthDivisions = 360;
+    const length = curve.getLength();
+    const samples = Math.ceil(length * 3), a = new THREE.Vector3(), b = new THREE.Vector3();
+    for (let i = 0; i < samples; i++) {
+      curve.getPointAt(i / samples, a); curve.getPointAt((i + 1) / samples, b);
+      const strip = box(anthill, (a.x + b.x) / 2, -.016, (a.z + b.z) / 2, width, .045, a.distanceTo(b) + .09, '#c4a36a');
+      strip.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+    }
+    antRoads.push({ curve, length, count, speed });
+  }
+  antRoad([[-10.7,-7.9],[-4,-7.9],[3,-7.9],[9.7,-6.8],[11,0],[10.4,6.5],[4,7.2],[-3,7.6],[-9.7,6],[-11.3,0]], 1.0, 30, .72);
+  antRoad([[-7.2,-.4],[-3.2,-1.1],[0,-2.6],[2.8,-1],[6.8,-.4],[6.7,4.8],[0,5.1],[-6.5,4.7]], .6, 18, .64);
+  antRoad([[-10.4,-7.7],[-17,-10.8],[-22,-16],[-17,-19],[-9,-17],[-6,-12]], 1.1, 22, .95);
+  antRoad([[9.6,-6.7],[16,-11],[23,-15],[26,-8],[21,-1],[15,1]], 1.1, 20, .88);
+  antRoad([[-9.7,6],[-17,7],[-23,13],[-16,18],[-4,17],[5,18],[17,15],[24,8],[18,5],[10.4,6.5],[4,9],[-3,10]], 1.05, 30, 1.02);
+
+  function mound(x, z, radius, high, facing = 0) {
+    const nest = group(anthill, x, 0, z); nest.rotation.y = facing;
+    // Nested faceted ellipsoids keep the nest softer than the rocky scenery.
+    const bottom = mesh(nest, geo('ico', 1, 2), '#b1814e', 0, .02, 0); bottom.scale.set(radius, high * .62, radius * .82);
+    const crown = mesh(nest, geo('ico', 1, 1), '#bc915a', -.28, high * .26, -.35); crown.scale.set(radius * .77, high * .69, radius * .63);
+    const crest = mesh(nest, geo('ico', 1, 1), '#c9a36b', -.18, high * .55, -.22); crest.scale.set(radius * .46, high * .42, radius * .43);
+    const entrance = mesh(nest, geo('ico', 1, 2), '#392b22', 0, .37, radius * .81); entrance.scale.set(radius * .28, .52, .19);
+    const inner = mesh(nest, geo('ico', 1, 1), '#211e1a', 0, .32, radius * .88); inner.scale.set(radius * .2, .36, .08);
+    // A stone arch and a well-worn ramp frame the visible entrance.
+    for (let i = 0; i < 7; i++) {
+      const theta = Math.PI * i / 6;
+      const pebble = mesh(nest, geo('ico', 1, 0), i % 2 ? '#d4b17a' : '#9b7144', Math.cos(theta) * radius * .3, .1 + Math.sin(theta) * .68, radius * .89);
+      pebble.scale.set(.23, .24, .23);
+    }
+    box(nest, 0, -.005, radius * 1.1, radius * .55, .08, radius * .66, '#c4a36a');
+    for (let i = 0; i < 20; i++) {
+      const theta = random() * Math.PI * 2, r = radius * (1 + random() * .24);
+      rock(nest, Math.sin(theta) * r, Math.cos(theta) * r * .82, .13 + random() * .23, i % 2 ? '#d1ad79' : '#977442');
+    }
+  }
+  mound(-19, -16.8, 4.6, 4.9, .12);
+  mound(21.6, -12.6, 4.0, 4.1, -.9);
+  mound(-22.3, 12.6, 3.1, 2.7, 2.0);
+  mound(19.2, 15.7, 3.8, 3.1, -2.5);
+  mound(-2.2, -19.6, 2.8, 2.5, .05);
+
+  function clover(g, x, z, size = 1) {
+    const tuft = group(g, x, 0, z); tuft.rotation.y = random() * Math.PI * 2;
+    box(tuft, 0, .38 * size, 0, .055, .76 * size, .055, '#4d793e');
+    for (let n = 0; n < 3; n++) {
+      const theta = n * Math.PI * 2 / 3;
+      const leaf = mesh(tuft, geo('ico', 1, 1), n % 2 ? '#71a748' : '#579541', Math.sin(theta) * .28 * size, .73 * size, Math.cos(theta) * .28 * size);
+      leaf.scale.set(.34 * size, .08 * size, .32 * size); leaf.rotation.y = theta;
+    }
+  }
+  function supplyPile(x, z, leafPile = false) {
+    const pile = group(anthill, x, 0, z);
+    cyl(pile, 0, -.007, 0, 1.5, 1.5, .035, '#b69a68', 10);
+    for (let i = 0; i < 19; i++) {
+      const theta = random() * Math.PI * 2, r = random() * 1.05;
+      const item = mesh(pile, geo('ico', 1, 0), leafPile ? (i % 2 ? '#70a33c' : '#459548') : (i % 2 ? '#ebc376' : '#d5a450'), Math.sin(theta) * r, .14 + (1 - r) * .33, Math.cos(theta) * r);
+      item.scale.set(leafPile ? .36 : .15, leafPile ? .06 : .13, leafPile ? .2 : .23); item.rotation.set(random() * .5, random() * 6, random() * .2);
+    }
+  }
+  supplyPile(-13, -5.3, true); supplyPile(13.6, -3.4); supplyPile(4.9, 11.5, true); supplyPile(-16.8, 14.2);
+  // A fallen branch, mushrooms and tall clover give the surrounding garden scale.
+  const log = group(anthill, 11.7, .42, -17.8); log.rotation.set(0, -.48, Math.PI / 2);
+  cyl(log, 0, 0, 0, .72, .85, 7.5, '#78502f', 9);
+  cyl(log, 0, 3.78, 0, .59, .59, .05, '#ccaa71', 9);
+  cyl(log, 0, 3.81, 0, .32, .32, .02, '#a97b4a', 9);
+  function mushroom(x, z, size) {
+    cyl(anthill, x, .45 * size, z, .14 * size, .22 * size, .9 * size, '#f0dfb8', 7);
+    cone(anthill, x, .98 * size, z, .62 * size, .47 * size, '#c76d47', 9);
+    cyl(anthill, x, .78 * size, z, .62 * size, .49 * size, .15 * size, '#ead0a3', 9);
+  }
+  [[-26,-5,1.7],[-24.7,-4.3,.9],[26,18,1.35],[25,17,.8],[-9,20,1.1]].forEach(p => mushroom(...p));
+  for (let i = 0; i < 240; i++) {
+    const x = (random() - .5) * 57, z = (random() - .5) * 46;
+    if (Math.abs(x) < 12 && Math.abs(z) < 10) continue;
+    // Keep nest entrances and the avenues visually open.
+    if (antRoads.some(({curve}) => {
+      for (let j = 0; j < 90; j++) { const p = curve.getPointAt(j / 90, scratch); if (Math.hypot(p.x - x, p.z - z) < .95) return true; }
+      return false;
+    })) continue;
+    if (i % 11 === 0) rock(anthill, x, z, .6 + random() * 1.15, '#a6a58c');
+    else if (i % 4 === 0) clover(anthill, x, z, .8 + random() * 1.6);
+    else if (i % 7 === 0) flower(anthill, x, z, '#f2d89d', 1.1);
+    else grass(anthill, x, z, .75 + random() * 1.8, i % 2 ? '#7f9952' : '#5f914b');
+  }
+  [[-26,-19,1.45],[-13,-22,1.1],[6,-22,1.4],[27,-18,1.25],[-27,19,1.15],[27,21,.95]].forEach((p,i) => tree(anthill, ...p, i % 2));
+  // Small path-side stones leave the studio conspicuous when zooming far out.
+  for (let i = 0; i < 18; i++) {
+    const theta = i / 18 * Math.PI * 2;
+    rock(anthill, Math.sin(theta) * 12.4, Math.cos(theta) * 9.3, .16 + (i % 3) * .07, '#e2cca1');
+  }
+
+  // Instancing lets 120 six-legged workers move with only six additional draws.
+  const antCount = antRoads.reduce((total, road) => total + road.count, 0);
+  const antLayer = group(scene);
+  function antInstances(geometry, color, count) {
+    const instances = new THREE.InstancedMesh(geometry, material(color), count);
+    instances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    instances.castShadow = true; instances.receiveShadow = true;
+    instances.frustumCulled = false;
+    antLayer.add(instances); antSystems.push(instances); return instances;
+  }
+  const antBodies = antInstances(geo('ico', 1, 1), '#513325', antCount * 3);
+  const antLegs = antInstances(geo('cylinder', 1, 1, 1, 4), '#65452d', antCount * 12);
+  const antFeelers = antInstances(geo('cylinder', 1, 1, 1, 4), '#493328', antCount * 4);
+  const antLeaves = antInstances(geo('ico', 1, 0), '#78b84c', antCount);
+  const antGrains = antInstances(geo('ico', 1, 1), '#f0cc7b', antCount);
+  const antVeins = antInstances(geo('cylinder', 1, 1, 1, 4), '#bfda75', antCount);
+  const ants = [];
+  antRoads.forEach((road, roadIndex) => {
+    for (let i = 0; i < road.count; i++) ants.push({ road, offset: (i + .2) / road.count, scale: .76 + random() * .24, phase: random() * Math.PI * 2, cargo: (i + roadIndex) % 3, direction: i % 4 === 0 ? -1 : 1 });
+  });
+  const antDummy = new THREE.Object3D(), antPosition = new THREE.Vector3(), antTangent = new THREE.Vector3();
+  const antRotation = new THREE.Quaternion(), antStart = new THREE.Vector3(), antEnd = new THREE.Vector3(), antAxis = new THREE.Vector3(0, 1, 0), antDirection = new THREE.Vector3();
+  let antScale = 1;
+  function antPoint(target, x, y, z) { return target.set(x * antScale, y * antScale, z * antScale).applyQuaternion(antRotation).add(antPosition); }
+  function antSegment(instances, index, ax, ay, az, bx, by, bz, radius) {
+    antPoint(antStart, ax, ay, az); antPoint(antEnd, bx, by, bz);
+    antDummy.position.copy(antStart).add(antEnd).multiplyScalar(.5);
+    antDirection.subVectors(antEnd, antStart);
+    const length = antDirection.length();
+    antDummy.quaternion.setFromUnitVectors(antAxis, antDirection.normalize());
+    antDummy.scale.set(radius * antScale, length, radius * antScale);
+    antDummy.updateMatrix(); instances.setMatrixAt(index, antDummy.matrix);
+  }
+  function antPart(instances, index, x, y, z, sx, sy, sz) {
+    antPoint(antDummy.position, x, y, z); antDummy.quaternion.copy(antRotation);
+    antDummy.scale.set(sx * antScale, sy * antScale, sz * antScale); antDummy.updateMatrix(); instances.setMatrixAt(index, antDummy.matrix);
+  }
+  function updateAnts() {
+    ants.forEach((ant, index) => {
+      const progress = ((ant.offset + elapsed * ant.road.speed / ant.road.length * ant.direction) % 1 + 1) % 1;
+      ant.road.curve.getPointAt(progress, antPosition); ant.road.curve.getTangentAt(progress, antTangent);
+      antRotation.setFromAxisAngle(antAxis, Math.atan2(antTangent.x * ant.direction, antTangent.z * ant.direction));
+      antScale = ant.scale;
+      // A second lane lets empty ants return past the laden convoy.
+      const side = ant.direction * .17;
+      antPosition.x += Math.cos(Math.atan2(antTangent.x, antTangent.z)) * side;
+      antPosition.z -= Math.sin(Math.atan2(antTangent.x, antTangent.z)) * side;
+      antPart(antBodies, index * 3, 0, .23, -.34, .2, .18, .29);
+      antPart(antBodies, index * 3 + 1, 0, .24, 0, .115, .13, .2);
+      antPart(antBodies, index * 3 + 2, 0, .25, .3, .18, .155, .18);
+      for (let leg = 0; leg < 6; leg++) {
+        const sign = leg < 3 ? -1 : 1, pair = leg % 3, z = (pair - 1) * .15;
+        const stride = quiet ? 0 : Math.sin(elapsed * 12 + ant.phase + pair * Math.PI + (sign > 0 ? Math.PI : 0));
+        const footZ = z * 2.0 + stride * .1, footY = .02 + Math.max(0, stride) * .065;
+        antSegment(antLegs, index * 12 + leg * 2, sign * .1, .23, z, sign * .34, .17, z * 1.6, .025);
+        antSegment(antLegs, index * 12 + leg * 2 + 1, sign * .34, .17, z * 1.6, sign * .51, footY, footZ, .021);
+      }
+      for (let sideIndex = 0; sideIndex < 2; sideIndex++) {
+        const sign = sideIndex ? 1 : -1;
+        antSegment(antFeelers, index * 4 + sideIndex * 2, sign * .1, .33, .4, sign * .2, .4, .54, .021);
+        antSegment(antFeelers, index * 4 + sideIndex * 2 + 1, sign * .2, .4, .54, sign * .27, .43, .7, .018);
+      }
+      // Unused cargo is collapsed locally rather than allocating extra meshes.
+      const leaf = ant.cargo === 0 ? 1 : 0, grain = ant.cargo === 1 ? 1 : 0;
+      antPart(antLeaves, index, 0, .52, .27, .26 * leaf, .08 * leaf, .48 * leaf);
+      antPart(antGrains, index, 0, .47, .39, .14 * grain, .16 * grain, .23 * grain);
+      antSegment(antVeins, index, 0, .597, -.07, 0, .597, .61, .014 * leaf);
+    });
+    antSystems.forEach(instances => instances.instanceMatrix.needsUpdate = true);
+  }
+  updateAnts();
+
+  // Older environments also extend across the explorable map.
+  for (let i = 0; i < 85; i++) {
+    const x = (random() - .5) * 57, z = (random() - .5) * 46;
+    if (Math.abs(x) < 13 && Math.abs(z) < 11) continue;
+    if (i % 3 === 0) { tree(forest, x, z, .8 + random() * .9, i % 2); pine(mountains, x, z, .9 + random() * 1.1); }
+    else { grass(forest, x, z, 1 + random()); rock(mountains, x, z, .5 + random(), '#a5b0a5'); }
+    if (i % 9 === 0) palm(beach, x, z, .8 + random() * .6, random() * 6);
+    else if (i % 4 === 0) rock(beach, x, z, .4 + random() * .7, '#d6c7a3');
+  }
+  box(beach, 0, -.022, -20.8, 60.15, .06, 8.4, '#4fc8c7');
+  box(beach, 0, -.022, 21.6, 60.15, .06, 6.8, '#50c7c6');
+  box(beach, 27.7, -.022, .4, 4.8, .06, 37, '#50c7c6');
+  peak(-21, -19.6, 6.2, 9.6, '#a5b4ac'); peak(16, -20, 6, 9, '#adb9b3');
+
   Object.values(themes).forEach(bake);
 
   // A pale underside shadow makes the island float without an expensive contact pass.
@@ -356,61 +543,110 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   selection.rotation.x = -Math.PI / 2; selection.visible = false; scene.add(selection);
 
   function updateCamera() {
-    const distance = 34;
-    camera.position.set(Math.sin(angle) * Math.cos(elevation) * distance, Math.sin(elevation) * distance, Math.cos(angle) * Math.cos(elevation) * distance);
+    const distance = 105, aspect = width / height;
+    const halfY = Math.max(10.0, 14.7 / aspect);
+    if (overview) {
+      const extentX = Math.abs(Math.cos(angle)) * 31 + Math.abs(Math.sin(angle)) * 26;
+      const extentY = Math.sin(elevation) * (Math.abs(Math.sin(angle)) * 31 + Math.abs(Math.cos(angle)) * 26) + Math.cos(elevation) * 6;
+      zoom = THREE.MathUtils.clamp(Math.min(halfY * aspect / extentX, halfY / extentY) * .9, MIN_ZOOM, MAX_ZOOM);
+    }
+    camera.position.set(lookAt.x + Math.sin(angle) * Math.cos(elevation) * distance, lookAt.y + Math.sin(elevation) * distance, lookAt.z + Math.cos(angle) * Math.cos(elevation) * distance);
     camera.lookAt(lookAt);
-    // Fit the complete diorama in either a tall or wide panel.
-    const aspect = width / height;
-    const halfY = Math.max(10.0, 15.2 / aspect);
     camera.left = -halfY * aspect; camera.right = halfY * aspect; camera.top = halfY; camera.bottom = -halfY;
-    camera.updateProjectionMatrix();
+    camera.zoom = zoom; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    onCameraChange({ zoom, overview });
   }
+  function zoomBy(factor) {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    overview = false; zoom = THREE.MathUtils.clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM); updateCamera();
+  }
+  function panCamera(dx, dy) {
+    const scale = (camera.top - camera.bottom) / zoom / height;
+    lookAt.x = THREE.MathUtils.clamp(lookAt.x - dx * scale * Math.cos(angle) + dy * scale * Math.sin(angle) / Math.sin(elevation), -26, 26);
+    lookAt.z = THREE.MathUtils.clamp(lookAt.z + dx * scale * Math.sin(angle) + dy * scale * Math.cos(angle) / Math.sin(elevation), -21, 21);
+    overview = false; updateCamera();
+  }
+  function showOverview() { lookAt.set(0, .45, 0); overview = true; updateCamera(); }
   function resize() {
     width = Math.max(1, host.clientWidth); height = Math.max(1, host.clientHeight);
     renderer.setSize(width, height, false); updateCamera();
   }
   const observer = new ResizeObserver(resize); observer.observe(host); resize();
 
-  let pointerStartX = 0, pointerStartY = 0, lastX = 0, lastY = 0, dragged = false, pointerId = null;
+  const activePointers = new Map();
+  let pointerStartX = 0, pointerStartY = 0, dragged = false, panGesture = false;
   function pointerDown(event) {
-    if (pointerId !== null) return;
+    if (event.button !== 0 && event.button !== 2) return;
     renderer.domElement.focus({ preventScroll: true });
-    pointerId = event.pointerId; lastX = pointerStartX = event.clientX; lastY = pointerStartY = event.clientY; dragged = false;
+    if (activePointers.size === 0) {
+      pointerStartX = event.clientX; pointerStartY = event.clientY; dragged = false;
+      panGesture = event.shiftKey || event.button === 2;
+    } else dragged = true;
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     renderer.domElement.setPointerCapture?.(event.pointerId);
   }
   function pointerMove(event) {
-    if (pointerId !== event.pointerId) return;
-    if (Math.hypot(event.clientX-pointerStartX,event.clientY-pointerStartY)>5) dragged = true;
-    if (dragged) { angle -= (event.clientX-lastX) * .006; elevation = THREE.MathUtils.clamp(elevation+(event.clientY-lastY)*.004,.4,1.05); updateCamera(); }
-    lastX=event.clientX;lastY=event.clientY;
+    const previous = activePointers.get(event.pointerId);
+    if (!previous) return;
+    const before = Array.from(activePointers.values());
+    const oldDistance = before.length === 2 ? Math.hypot(before[0].x - before[1].x, before[0].y - before[1].y) : 0;
+    const oldCenterX = before.length === 2 ? (before[0].x + before[1].x) / 2 : previous.x;
+    const oldCenterY = before.length === 2 ? (before[0].y + before[1].y) / 2 : previous.y;
+    const dx = event.clientX - previous.x, dy = event.clientY - previous.y;
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activePointers.size === 2) {
+      dragged = true;
+      const after = Array.from(activePointers.values());
+      const distance = Math.hypot(after[0].x - after[1].x, after[0].y - after[1].y);
+      if (oldDistance > 4 && distance > 4) zoomBy(distance / oldDistance);
+      panCamera((after[0].x + after[1].x) / 2 - oldCenterX, (after[0].y + after[1].y) / 2 - oldCenterY);
+      return;
+    }
+    if (activePointers.size > 2) return;
+    if (Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY) > 5) dragged = true;
+    if (dragged) {
+      if (panGesture || event.shiftKey) panCamera(dx, dy);
+      else { angle -= dx * .006; elevation = THREE.MathUtils.clamp(elevation + dy * .004, .4, 1.15); updateCamera(); }
+    }
   }
   function pointerUp(event) {
-    if (pointerId !== event.pointerId) return;
-    if (!dragged) {
+    if (!activePointers.has(event.pointerId)) return;
+    if (!dragged && !panGesture && activePointers.size === 1) {
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.set((event.clientX-rect.left)/width*2-1,-(event.clientY-rect.top)/height*2+1);
-      raycaster.setFromCamera(pointer,camera);
-      const hits=raycaster.intersectObjects(hitBoxes,false);
-      if(hits.length) { selected = agents.find(a=>a.id===hits[0].object.userData.agentId); onSelect(selected.id); }
+      pointer.set((event.clientX - rect.left) / width * 2 - 1, -(event.clientY - rect.top) / height * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(hitBoxes, false);
+      if (hits.length) { selected = agents.find(a => a.id === hits[0].object.userData.agentId); onSelect(selected.id); }
     }
-    if(renderer.domElement.hasPointerCapture?.(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
-    pointerId=null;
+    activePointers.delete(event.pointerId);
+    if (renderer.domElement.hasPointerCapture?.(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
+    // Keep dragged true until the last finger is lifted to avoid accidental picks.
   }
-  function pointerCancel() { pointerId=null; dragged=false; }
+  function pointerCancel(event) { activePointers.delete(event.pointerId); dragged = true; }
+  function wheel(event) { event.preventDefault(); zoomBy(Math.exp(-THREE.MathUtils.clamp(event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1), -200, 200) * .0015)); }
+  function contextMenu(event) { event.preventDefault(); }
   function keyDown(event) {
-    if(event.key==='ArrowLeft') angle-=.12;
-    else if(event.key==='ArrowRight') angle+=.12;
-    else if(event.key==='ArrowUp') elevation=THREE.MathUtils.clamp(elevation+.07,.4,1.05);
-    else if(event.key==='ArrowDown') elevation=THREE.MathUtils.clamp(elevation-.07,.4,1.05);
-    else if(event.key.toLowerCase()==='r'||event.key==='Home') { resetCamera();event.preventDefault();return; }
+    if (event.key === '+' || event.key === '=') { zoomBy(1.18); event.preventDefault(); return; }
+    if (event.key === '-' || event.key === '_') { zoomBy(1 / 1.18); event.preventDefault(); return; }
+    if (event.key === '0') { showOverview(); event.preventDefault(); return; }
+    if (event.shiftKey && event.key.startsWith('Arrow')) {
+      panCamera(event.key === 'ArrowLeft' ? 45 : event.key === 'ArrowRight' ? -45 : 0, event.key === 'ArrowUp' ? 45 : event.key === 'ArrowDown' ? -45 : 0);
+    } else if (event.key === 'ArrowLeft') angle -= .12;
+    else if (event.key === 'ArrowRight') angle += .12;
+    else if (event.key === 'ArrowUp') elevation = THREE.MathUtils.clamp(elevation + .07, .4, 1.15);
+    else if (event.key === 'ArrowDown') elevation = THREE.MathUtils.clamp(elevation - .07, .4, 1.15);
+    else if (event.key.toLowerCase() === 'r' || event.key === 'Home') { resetCamera(); event.preventDefault(); return; }
     else return;
-    event.preventDefault();updateCamera();
+    event.preventDefault(); updateCamera();
   }
-  renderer.domElement.addEventListener('pointerdown',pointerDown);
-  renderer.domElement.addEventListener('pointermove',pointerMove);
-  renderer.domElement.addEventListener('pointerup',pointerUp);
-  renderer.domElement.addEventListener('pointercancel',pointerCancel);
-  renderer.domElement.addEventListener('keydown',keyDown);
+  renderer.domElement.addEventListener('pointerdown', pointerDown);
+  renderer.domElement.addEventListener('pointermove', pointerMove);
+  renderer.domElement.addEventListener('pointerup', pointerUp);
+  renderer.domElement.addEventListener('pointercancel', pointerCancel);
+  renderer.domElement.addEventListener('lostpointercapture', pointerCancel);
+  renderer.domElement.addEventListener('wheel', wheel, { passive: false });
+  renderer.domElement.addEventListener('contextmenu', contextMenu);
+  renderer.domElement.addEventListener('keydown', keyDown);
 
   function routePoint(a, progress, result) {
     // Step to the side of the workstation before joining the plaza.
@@ -477,9 +713,11 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   let lastTime = performance.now();
   function animate(now) {
     if(disposed) return;
-    const dt=Math.min((now-lastTime)/1000,.06);lastTime=now;
+    // The first RAF can carry a timestamp older than scene construction.
+    const dt=THREE.MathUtils.clamp((now-lastTime)/1000,0,.06);lastTime=now;
     if(!quiet) elapsed+=dt;
     for(const a of agents) pose(a,dt);
+    if(theme==='anthill'&&!quiet) updateAnts();
     if(theme==='beach'&&!quiet) waveStrips.forEach((w,i)=>{ w.scale.x=1+Math.sin(elapsed*1.1+i)*.15;w.position.y=.035+Math.sin(elapsed*.8+i)*.011;w.material.opacity=.7; });
     screens.forEach((s,i)=>{s.material.emissiveIntensity=quiet?.22:.2+(Math.sin(elapsed*1.6+i)*.5+.5)*.25;});
     if(selected) { selection.visible=true;selection.position.set(selected.root.position.x,.14,selected.root.position.z); }
@@ -493,10 +731,10 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     frame=requestAnimationFrame(animate);
   }
   function setLandscape(name) {
-    const aliases={foresta:'forest',bosco:'forest',spiaggia:'beach',montagna:'mountains',mountain:'mountains'};
-    theme=aliases[name]||name;if(!themes[theme]) theme='forest';
-    Object.entries(themes).forEach(([key,g])=>g.visible=key===theme);water.visible=theme==='beach';
-    const palette=theme==='beach'?['#dbebe4','#ebcf87','#bc965e']:theme==='mountains'?['#d9e8e2','#93b75d','#899d79']:['#d4e9d5','#78b748','#99733e'];
+    const aliases={formicaio:'anthill',ants:'anthill',foresta:'forest',bosco:'forest',spiaggia:'beach',montagna:'mountains',mountain:'mountains'};
+    theme=aliases[name]||name;if(!themes[theme]) theme='anthill';
+    Object.entries(themes).forEach(([key,g])=>g.visible=key===theme);water.visible=theme==='beach';antLayer.visible=theme==='anthill';
+    const palette=theme==='anthill'?['#e5ebdc','#9eaa6c','#9b724b']:theme==='beach'?['#dbebe4','#ebcf87','#bc965e']:theme==='mountains'?['#d9e8e2','#93b75d','#899d79']:['#d4e9d5','#78b748','#99733e'];
     scene.background.set(palette[0]);floor.material.color.set(palette[0]);baseMat.color.set(palette[1]);earthMat.color.set(palette[2]);
   }
   function setAgentStatus(id,status) {
@@ -504,18 +742,19 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     a.status=status;a.working=/lavor|work|busy|active|thinking|running|scriv|pens|coordin/i.test(String(status));
   }
   function setQuiet(value) { quiet=!!value; }
-  function resetCamera() { angle=.62;elevation=.72;updateCamera(); }
+  function resetCamera() { angle=.62;elevation=.72;zoom=1;overview=false;lookAt.set(0,.45,0);updateCamera(); }
   function dispose() {
     disposed=true;cancelAnimationFrame(frame);observer.disconnect();
     const canvas=renderer.domElement;
     canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerCancel);
-    canvas.removeEventListener('keydown',keyDown);
+    canvas.removeEventListener('lostpointercapture',pointerCancel);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('contextmenu',contextMenu);canvas.removeEventListener('keydown',keyDown);
+    activePointers.clear();antSystems.forEach(instances=>instances.dispose());
     geometryCache.forEach(g=>g.dispose());mergedGeometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());
     agents.forEach(a=>{a.hit.material.dispose();a.halo.material.dispose();a.halo.geometry.dispose();});
     selection.material.dispose();selection.geometry.dispose();renderer.dispose();canvas.remove();
   }
-  setLandscape('forest');
+  setLandscape('anthill');
   quiet=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches||false;
   frame=requestAnimationFrame(animate);
-  return { setLandscape,setAgentStatus,setQuiet,resetCamera,dispose };
+  return { setLandscape,setAgentStatus,setQuiet,zoomBy,showOverview,resetCamera,dispose };
 }
