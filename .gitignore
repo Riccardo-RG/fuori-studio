@@ -1,0 +1,8 @@
+node_modules/
+dist/vendor/
+.DS_Store
+.sites-runtime/
+output/
+
+.local/
+.openai/hosting.json

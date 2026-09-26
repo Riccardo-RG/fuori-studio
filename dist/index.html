@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f5ed">
+  <title>Fuori Studio — Il mondo di Riccardo</title>
+  <meta name="description" content="Il tuo team AI, a cielo aperto. Un prototipo personale tra bosco, spiaggia e montagna per seguire progetti, idee e nuovi esperimenti.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="app-content">
+    <header class="topbar"><a class="brand" href="#main"><img src="favicon.svg" alt=""><span>fuori<span class="brand-light">studio</span><small>LO STUDIO DI RICCARDO</small></span></a><nav class="top-nav" aria-label="Navigazione principale"><a href="#office-title">Lo studio</a><a href="#team-title">Il team</a><a href="#portfolio-title">I progetti</a></nav><div class="topbar-right"><span class="demo-badge" id="provider-badge">Codex · connessione</span><span class="user-avatar" aria-label="Riccardo">R</span></div></header>
+    <main id="main">
+      <section class="page-heading"><div><div class="eyebrow">UN PO’ DI ARIA. SPAZIO ALLE TUE IDEE.</div><h1>Oggi si lavora <em>fuori.</em></h1><p>Tu racconti l’obiettivo. Il team trova il prossimo passo.</p></div><button class="button primary" id="new-mission"><span aria-hidden="true">＋</span> Parla con il team</button></section>
+      <div class="workspace">
+        <section class="office-panel" aria-labelledby="office-title">
+          <div class="panel-top office-toolbar"><div class="panel-title"><span class="location-icon" aria-hidden="true">⌘</span><h2 id="office-title">Il nostro angolo di bosco</h2></div><div class="landscape-picker" role="group" aria-label="Scegli il paesaggio"><button class="landscape-button" data-landscape="forest" aria-pressed="true">Bosco</button><button class="landscape-button" data-landscape="beach" aria-pressed="false">Spiaggia</button><button class="landscape-button" data-landscape="mountain" aria-pressed="false">Montagna</button></div></div>
+          <div class="office-world" id="office-world">
+            <div class="scene-backdrop"></div>
+            <div class="office-illustration" id="office-illustration" role="img" aria-label="Un team di personaggi a blocchi lavora in un mondo 3D immerso nella natura"></div>
+            <div class="scene-caption"><span id="landscape-label">SOTTO GLI ALBERI</span><span>Costruiamo qualcosa di bello.</span></div>
+            <div class="office-message" id="office-message"><span aria-hidden="true">✦</span> Un bel posto per iniziare qualcosa.</div>
+            <button id="reset-camera" class="icon-button camera-reset" aria-label="Ripristina vista iniziale">↺ <span>Vista iniziale</span></button><button id="focus-toggle" class="icon-button scene-focus" aria-pressed="false" title="Riduci le animazioni">◌ <span>Quiet mode</span></button>
+          </div>
+          <div class="office-status"><span><span class="status-dot"></span> <strong id="team-status">5 colleghi pronti</strong><span class="status-extra"> · una squadra per le tue idee</span></span><span class="simulation-note">Trascina per ruotare · clicca un collega</span></div>
+        </section>
+        <aside class="mission-panel chat-panel" aria-labelledby="chat-title">
+          <div class="panel-top"><div class="panel-title"><span class="tiny-star">✳</span><div><h2 id="chat-title">Parliamone insieme.</h2><p class="chat-subtitle">Noemi coordina, il team collabora.</p></div></div><button id="new-chat" class="icon-button" aria-label="Inizia una nuova conversazione" title="La conversazione attuale viene conservata">＋</button></div>
+          <div class="chat-context"><span class="context-label">FOCUS</span><span id="chat-context">Lo riconosciamo dalla conversazione</span></div>
+          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversazione con lo studio"></div>
+          <div id="chat-thinking" class="chat-thinking" role="status" hidden></div>
+          <div id="chat-error" class="chat-error" role="alert" hidden></div>
+          <div class="chat-starters" aria-label="Spunti per iniziare"><button data-chat-prompt="Ho tante idee aperte: aiutami a scegliere il prossimo passo.">Da dove partiamo?</button><button data-chat-prompt="Vorrei raccontare meglio online quello che sto costruendo.">Raccontiamo un progetto</button></div>
+          <form id="chat-form" class="chat-composer"><label class="visually-hidden" for="chat-input">Scrivi al tuo team</label><textarea id="chat-input" rows="3" maxlength="12000" placeholder="Parla con il team. Al resto pensiamo insieme…"></textarea><div class="composer-bottom"><span id="provider-note">Collegamento a Codex…</span><button class="chat-send" id="chat-send" type="submit" aria-label="Invia messaggio" disabled>↑</button><button class="chat-stop" id="chat-stop" type="button" hidden>Ferma</button></div></form>
+          <div class="chat-footer">La conversazione resta salvata sul tuo Mac.</div>
+        </aside>
+      </div>
+      <section class="team-section" aria-labelledby="team-title"><div class="section-title"><h2 id="team-title">Le persone del tuo studio <span>05</span></h2><p>Ognuno con il suo talento.</p></div><div class="agent-grid" id="agent-grid"></div></section>
+      <footer><span><b>fuoristudio</b> Un po’ più vicino a come vuoi lavorare.</span><span>App locale · AI tramite Codex <span class="footer-star">✳</span></span></footer>
+    </main>
+  </div>
+</div>
+<dialog id="detail-dialog" aria-labelledby="dialog-title"><div class="dialog-top"><span id="dialog-eyebrow" class="eyebrow">IL TUO TEAM</span><button id="close-dialog" class="icon-button" aria-label="Chiudi finestra">✕</button></div><div id="dialog-body"></div></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+<script type="module" src="app.js"></script>
+</body></html>
