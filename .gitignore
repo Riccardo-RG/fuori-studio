@@ -6,3 +6,6 @@ output/
 
 .local/
 .openai/hosting.json
+.env
+.env.*
+!.env.example

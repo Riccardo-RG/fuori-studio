@@ -1,14 +1,20 @@
 {
   "name": "fuori-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Un ufficio 3D locale di colleghi AI, immerso nella natura.",
+  "description": "A local AI studio for owned products, scoped memory and reviewed deliverables.",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
     "prepare": "node scripts/vendor.mjs",
-    "check": "node --check dist/app.js && node --check dist/world.js && node --check server.mjs && node --check lib/chat.mjs"
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/*.test.mjs"
   },
-  "dependencies": { "three": "0.186.1" }
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
 }

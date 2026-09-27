@@ -1,133 +1,174 @@
-# Sistemi di agenti: contesto per Fuori Studio
+# Agent systems: product context for Fuori Studio
 
-Ricognizione documentale del **27 settembre 2026**, basata su documentazione e repository ufficiali consultati online. Serve come base per le prossime domande sul prodotto: non è una classifica, una scelta di stack o una verifica pratica dei sistemi. Non sono stati installati né collegati servizi. Le pagine correnti possono precedere o seguire la versione effettivamente installabile: prima di un'integrazione vanno fissate versione, modalità di hosting e funzionalità del relativo adattatore.
+Research date: **27 September 2026**. This is a documentary review of official documentation and repositories, not a market ranking or a hands-on benchmark. Competitor products were not installed or connected, and their output quality was not compared experimentally. Documentation can describe a different release from the one available for a particular deployment. Pin the version, hosting mode, and adapter contract before integrating a system.
 
-## 1. I livelli da distinguere
+The current implementation described below was inspected locally. Mock tests establish application behavior; they do not establish provider availability or intelligence, real-world output quality, or performance against competitors.
 
-“Multi-agente” può indicare cose diverse: più personaggi nella stessa conversazione, sottoprocessi con contesti separati, un workflow di agenti oppure un'organizzazione che conserva incarichi e responsabilità per settimane. La presenza di più nomi in chat non dimostra da sola gli altri livelli.
+## 1. What Fuori Studio should own
 
-| Sistema | Oggetto centrale | Livello prevalente | Relazione con Fuori Studio |
-|---|---|---|---|
-| **Paperclip** | Organizzazione, agente, issue, obiettivo, heartbeat | Pannello di controllo e gestione del lavoro persistente | Riferimento per trasformare il team visibile in incarichi, responsabilità e risultati verificabili |
-| **Codex CLI/app** | Chat/thread, turni, workspace, subagenti | Ambiente operativo per svolgere lavoro, anche con delega parallela | Motore già vicino all'app; dispone già di capacità multi-agente |
-| **CrewAI** | Agent, Task, Crew, Flow | Framework Python; AMP aggiunge una piattaforma operativa | Riferimento per ruoli specializzati e processi misti, deterministici e autonomi |
-| **LangGraph / LangSmith** | Grafo, stato, thread, checkpoint, run | Runtime di orchestrazione; piattaforma di osservabilità e deploy | Riferimento per ripresa, pause e flussi espliciti |
-| **Microsoft Agent Framework** | Agent, session, workflow, executor | Framework e integrazioni di hosting | Riferimento per orchestrazioni tipizzate e workflow durevoli |
-| **OpenHands** | Agent, conversation, workspace, strumenti | Runtime/SDK per agenti software; applicazioni e automazione separate | Comparabile a un motore di esecuzione integrabile dietro una UI propria |
-| **OpenClaw** | Gateway, agenti, sessioni, canali, automazioni | Assistente/gateway operativo, con più agenti e lavoro in background | Riferimento per canali, eventi, continuità e controllo delle azioni |
+Fuori Studio is primarily a working environment for its owner's **proprietary products**, supporting growth as an entrepreneur and software developer. Consulting is a secondary use case. Its useful distinction is the continuity between a product brief, scoped context, assigned work, a reviewable delivery, and an explicit decision. Integrating more model brands does not by itself create that value.
 
-Questa classificazione è una lettura architetturale delle fonti, non una tassonomia dichiarata identicamente da tutti i vendor. Si basa sulle rispettive [definizioni di Paperclip](https://github.com/paperclipai/paperclip/blob/master/docs/start/what-is-paperclip.md), [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [CrewAI](https://docs.crewai.com/core-concepts/Agents), [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview), [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/), [OpenHands SDK](https://docs.openhands.dev/sdk/arch/overview) e [OpenClaw](https://docs.openclaw.ai/concepts/multi-agent).
+Roles, models, runtimes, and orchestration are separate concepts:
 
-## 2. Paperclip: cosa coordina davvero
+- A **role** has responsibilities, context access, and instructions. Several roles can use the same model or service.
+- A **model/provider** generates outputs under its own API and account terms.
+- A **runtime** gives a model tools, execution state, and an environment. Calling a text API does not automatically supply the capabilities of a coding agent.
+- An **orchestration application** owns work records, routing, permissions, review, and recovery across executions.
 
-Il progetto qui considerato è **[paperclipai/paperclip](https://github.com/paperclipai/paperclip)**. Paperclip organizza agenti eseguiti da runtime diversi: definisce obiettivi e gerarchie, assegna issue, registra attività e applica politiche. Non è un nuovo modello linguistico. Il runtime che scrive codice o usa strumenti può essere Codex, Claude Code, un processo locale o un servizio HTTP. [Architettura a due livelli](https://github.com/paperclipai/paperclip/blob/master/docs/start/what-is-paperclip.md).
+Anthill, forest, beach, and mountain are graphic themes. Animals are decorative. Worker activity can reflect real task state, but the scenery is not the orchestration architecture and does not demonstrate autonomous work.
 
-Il ciclo operativo documentato è:
+### Implemented in this repository
 
-1. Esiste un'organizzazione con un obiettivo e agenti con responsabilità.
-2. Un incarico mantiene identità, stato, assegnatario e relazioni con altro lavoro.
-3. Una scadenza, un'assegnazione, una menzione o un intervento umano provoca un heartbeat.
-4. Il runtime dell'agente riprende il contesto, controlla gli incarichi e reclama il lavoro.
-5. L'agente produce un risultato o segnala un blocco, lasciando aggiornamenti.
-6. Il lavoro può passare a un altro agente o attendere un intervento umano.
+| Capability | Current behavior | Boundary |
+| --- | --- | --- |
+| Scoped context and hybrid memory | Separate conversations, explicit confirmed notes, provenance, version history, selected procedures, and bounded context retrieval | No semantic/vector search, document ingestion, or automatic promotion of generated statements into facts |
+| Owned and client projects | Projects group work within an explicit scope; owned products are the default priority | Parent scopes do not implicitly grant access to their contents |
+| Durable assignments | Tasks preserve a brief, responsible role, ordered steps, status, outputs, and execution metadata | Execution currently produces text; it does not edit repositories, browse the web, or publish externally |
+| Reviewable deliveries | Versioned text artifacts can be approved or returned for changes | A model cannot approve its own delivery |
+| Recovery | Interrupted work is recoverable; completed steps can be preserved while incomplete work is retried, subject to current context permissions | This is not a guarantee of exactly-once effects in arbitrary external systems |
+| AI connections | Local Codex plus OpenAI, Anthropic, DeepSeek, and OpenRouter API connections, assigned per role | External services need the user's valid API credentials and explicit scope policies; no silent fallback |
+| Local routines | Enabled interval routines create queued tasks while the local server is running | They do not silently start model calls, supply cloud hosting, or keep a stopped machine running |
+| Reusable learning | An approved artifact can inform a proposed note for user review | Proposed notes remain excluded from confirmed context until explicitly accepted |
 
-Il checkout dell'issue evita che due agenti ne assumano contemporaneamente la responsabilità. Non equivale, da solo, a isolare qualsiasi file o servizio esterno condiviso. La seconda frase è un'inferenza sul confine della funzione. [Concetti](https://docs.paperclip.ing/guides/welcome/key-concepts/), [protocollo heartbeat](https://github.com/paperclipai/paperclip/blob/master/docs/guides/agent-developer/heartbeat-protocol.md).
+See [Product direction](../PRODUCT.md), [Provider connections](PROVIDERS.md), and [Architecture](ARCHITECTURE.md) for the implementation and deployment boundaries. Neither this feature set nor the competitor review demonstrates that a mixed-provider team reasons better than one well-configured agent.
 
-### Budget, approvazioni e tracce sono oggetti diversi
+## 2. The categories behind “multi-agent”
 
-- **Budget:** la documentazione distingue limiti mensili per organizzazione/agente e limiti complessivi di progetto; descrive avvisi e arresto dei successivi heartbeat quando la soglia è raggiunta. I costi dipendono dai dati comunicati dagli adattatori. Non assumere che una soglia applicativa garantisca matematicamente assenza di sforamenti della singola chiamata già in corso, o che una quota in abbonamento sia uguale a un costo API. Questo limite della verifica è rilevante anche quando la pagina usa formule promozionali assolute. [Costs](https://docs.paperclip.ing/guides/day-to-day/costs/).
-- **Governance:** esistono richieste di assunzione, strategia e superamento budget con approve/reject/revision. Le guide e alcuni riferimenti API differiscono nel presentare l'approvazione delle assunzioni come obbligatoria o dipendente dalla policy: controllare configurazione e versione, senza dedurre che ogni azione abbia sempre un gate. [Approvals](https://docs.paperclip.ing/guides/day-to-day/approvals/), [API reference](https://github.com/paperclipai/paperclip/blob/master/skills-releases/paperclip/v0/references/api-reference.md).
-- **Revisione del risultato:** una execution policy può intercettare la chiusura di un'issue e indirizzarla a revisore e approvatore. Gli stadi sono configurabili. Questo controllo sul completamento dell'incarico è distinto dall'autorizzazione tecnica a eseguire un comando o pubblicare un contenuto. [Execution policy](https://docs.paperclip.ing/guides/power/execution-policy/).
-- **Audit:** l'Activity Log conserva mutazioni con attore e timestamp; i transcript delle esecuzioni costituiscono un livello ulteriore. “Ho visto il messaggio finale” e “posso ricostruire chi ha autorizzato cosa” sono capacità differenti. [Activity Log](https://docs.paperclip.ing/guides/day-to-day/activity-log/).
+The term can mean several named participants in a chat, subprocesses with separate context, a workflow of agents, or an organization retaining responsibility for weeks. Those are different levels.
 
-Le **routines** producono esecuzioni tracciate mediante schedule cron, webhook o invocazione API/manuale. La schedulazione include un fuso orario; ogni esecuzione è riconducibile all'issue prodotta. L'heartbeat è la finestra di lavoro dell'agente, la routine è la definizione ricorrente del lavoro da avviare. [Heartbeats & Routines](https://docs.paperclip.ing/guides/projects-workflow/routines/).
+| System | Central objects | Main layer | Relevance to Fuori Studio |
+| --- | --- | --- | --- |
+| **Paperclip** | Company, agent, issue, goal, heartbeat | Persistent work management and control plane | Responsibilities, task lifecycle, review, budgets, and operational visibility |
+| **Codex CLI/app** | Chat/thread, turns, workspace, subagents | Work execution environment with parallel delegation | Existing local engine; already has multi-agent capabilities |
+| **CrewAI** | Agent, Task, Crew, Flow | Python framework; AMP adds an operating platform | Specialized roles and mixed deterministic/agent-driven processes |
+| **LangGraph / LangSmith** | Graph, state, thread, checkpoint, run | Orchestration runtime; observability and deployment platform | Explicit transitions, pauses, recovery, and evaluation |
+| **Microsoft Agent Framework** | Agent, session, workflow, executor | Framework with hosting integrations | Typed orchestration and durable hosted workflows |
+| **OpenHands** | Agent, conversation, workspace, tools | Software-agent runtime/SDK, with separate applications and automation | An execution engine that could sit behind a product-specific interface |
+| **OpenClaw** | Gateway, agents, sessions, channels, automation | Operational assistant/gateway | Channels, events, continuity, and action controls |
 
-### Paperclip e Codex possono comporsi
+This classification is our architectural reading, not a taxonomy shared verbatim by the vendors. Sources: [Paperclip](https://github.com/paperclipai/paperclip/blob/master/docs/start/what-is-paperclip.md), [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [CrewAI](https://docs.crewai.com/core-concepts/Agents), [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview), [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/), [OpenHands SDK](https://docs.openhands.dev/sdk/arch/overview), and [OpenClaw](https://docs.openclaw.ai/concepts/multi-agent).
 
-L'adattatore `codex_local` è documentato come esecuzione del Codex locale con continuità di sessione, home gestita e istruzioni/skill di Paperclip. Quindi il confronto corretto include **Paperclip sopra Codex**, non soltanto la scelta esclusiva fra i due. Configurazione del runner, directory, policy del runtime e disponibilità del provider restano componenti concrete dell'integrazione. Non si deve dedurre dal solo nome “adattatore Codex” che tutte le funzioni della desktop app siano esposte. [Adattatore ufficiale Paperclip](https://docs.paperclip.ing/reference/adapters/codex/).
+## 3. Paperclip: what it coordinates
 
-## 3. Codex: partire dalle capacità attuali
+The project reviewed is [paperclipai/paperclip](https://github.com/paperclipai/paperclip). Paperclip organizes agents executed by different runtimes. It defines goals and reporting relationships, assigns issues, records activity, and applies policies. It is not a new language model. Codex, Claude Code, a local process, or an HTTP service can perform the actual work. [Two-layer architecture](https://github.com/paperclipai/paperclip/blob/master/docs/start/what-is-paperclip.md).
 
-Codex documenta già **subagenti con contesti separati**, delega parallela, raccolta risultati e possibilità di guidare o fermare gli agenti. CLI e app offrono superfici per ispezionarli; comportamento e comandi dipendono dalla release. Descriverlo come semplice chat a singolo agente falserebbe il confronto. [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+The documented work cycle is:
 
-Le funzioni di **worktree** permettono di isolare checkout per attività parallele. Le **scheduled tasks** possono proseguire un contesto esistente o creare esecuzioni indipendenti e usare skill/plugin. Le attività locali legate a progetti richiedono che macchina, app e directory siano disponibili; non implicano automaticamente un servizio sempre acceso nel cloud. [Worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees), [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app).
+1. An organization defines a goal and agents' responsibilities.
+2. An issue retains identity, state, assignee, and relationships to other work.
+3. An assignment, mention, schedule, or human action wakes an agent.
+4. Its runtime receives context, examines its assignments, and claims work.
+5. The agent delivers a result or records a blocker and progress.
+6. Work passes to another agent or waits for a person.
 
-Per una UI propria, l'**app-server** espone thread, autenticazione, approvazioni ed eventi: è un punto di integrazione diverso dal leggere solo l'output testuale di un comando. La documentazione consultata distingue trasporti e segnala limitazioni sperimentali per WebSocket: occorre verificare il contratto della versione scelta. [App-server](https://learn.chatgpt.com/docs/app-server).
+Atomic issue checkout prevents two agents from claiming ownership simultaneously. It does not, by itself, isolate all shared files or external services; that is an inference about the scope of the mechanism. [Key concepts](https://docs.paperclip.ing/guides/welcome/key-concepts/), [heartbeat protocol](https://github.com/paperclipai/paperclip/blob/master/docs/guides/agent-developer/heartbeat-protocol.md).
 
-Per il confronto futuro va separato anche il **prodotto Codex** dalle **API OpenAI**. Le fonti correnti descrivono Agents API con harness Codex gestito, sessioni durevoli, strumenti e subagenti; il servizio applicativo rimane da progettare. Non trasferire automaticamente requisiti di autenticazione, disponibilità o fatturazione dell'app alle API. [Agents API](https://developers.openai.com/api/docs/guides/agents-api/overview), [scelta del runtime](https://developers.openai.com/api/docs/guides/agents).
+### Budgets, approvals, and evidence are different controls
 
-L'organigramma aziendale persistente e il budget mensile per “dipendente” non risultano attestati come oggetti nativi di Codex nelle pagine lette. Questo non nega che un'applicazione esterna possa costruirli, o che nuove versioni abbiano ulteriori funzioni.
+- **Budgets:** the documentation describes monthly company/agent limits and lifetime project limits, warnings, and pausing subsequent heartbeats at the threshold. Accounting depends on adapter reports. An application threshold is not proof that an already running request can never exceed it; subscription quotas are not interchangeable with API charges. [Costs](https://docs.paperclip.ing/guides/day-to-day/costs/).
+- **Governance:** hiring, strategy, and budget exceptions can produce approve/reject/revision requests. Some guides describe hiring approval as mandatory while API references make it policy-dependent. Check the configuration rather than assuming every consequential action always has a gate. [Approvals](https://docs.paperclip.ing/guides/day-to-day/approvals/), [API reference](https://github.com/paperclipai/paperclip/blob/master/skills-releases/paperclip/v0/references/api-reference.md).
+- **Delivery review:** an execution policy can intercept issue completion and route it to a reviewer and approver. These configurable stages govern completion; they are different from technical permission to run a command or publish content. [Execution policy](https://docs.paperclip.ing/guides/power/execution-policy/).
+- **Audit and inspection:** the activity log records mutations, actors, and timestamps; execution transcripts provide additional detail. Seeing a final answer is different from reconstructing who authorized a change. A normal event log is not necessarily tamper-proof. [Activity log](https://docs.paperclip.ing/guides/day-to-day/activity-log/).
 
-## 4. Framework: cosa offrono e cosa resta all'applicazione
+Routines define repeatable work launched through schedules, webhooks, or manual/API invocation. They retain run history linked to resulting issues. Heartbeats are execution windows, while routines define the work to launch. The documentation recommends waking agents for actual events instead of frequent idle polling. [Heartbeats and routines](https://docs.paperclip.ing/guides/projects-workflow/routines/).
+
+### Paperclip can use Codex
+
+The `codex_local` adapter runs local Codex with session continuity, managed homes, and injected Paperclip instructions/skills. The comparison therefore includes **Paperclip operating above Codex**, rather than an exclusive choice between them. Runtime permissions, directory access, authentication, and provider availability remain integration concerns. An adapter does not imply access to every desktop-app feature. [Codex adapter](https://docs.paperclip.ing/reference/adapters/codex/).
+
+Current adapter documentation also distinguishes selectable local adapters from HTTP/process runtimes configured through APIs or imports. “Supports a runtime” does not always mean “ready in a dropdown with no configuration.” [Adapters overview](https://docs.paperclip.ing/reference/adapters/overview/).
+
+For Fuori Studio, the useful lesson is explicit responsibility and enforced review. It is not a claim that Paperclip makes the underlying model more capable.
+
+## 4. Codex: compare against its actual capabilities
+
+Codex documents subagents with separate contexts, parallel delegation, result collection, and controls to steer or stop agents. CLI/app inspection surfaces depend on the release. Calling Codex a single-agent chat would misrepresent the baseline. [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+
+Worktrees isolate checkouts for parallel work. Scheduled tasks can continue existing context or create independent executions and use skills/plugins. Local project tasks still depend on the machine, app, and directories being available; scheduling alone does not imply always-on cloud execution. [Worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees), [scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app).
+
+The app-server exposes threads, authentication, approvals, and events for custom clients. That is a different integration boundary from reading a command's final text. Transport support and experimental limitations need verification for the chosen version. [App-server](https://learn.chatgpt.com/docs/app-server).
+
+Also distinguish the Codex product from OpenAI APIs. The reviewed API documentation describes a managed Codex harness, durable sessions, tools, and subagents; the surrounding application still needs to be built. Do not transfer authentication, availability, or billing assumptions from the desktop app to an API. [Agents API](https://developers.openai.com/api/docs/guides/agents-api/overview), [runtime selection](https://developers.openai.com/api/docs/guides/agents).
+
+The pages reviewed did not establish a persistent company reporting chart or monthly per-employee budget as native Codex objects. This is a limitation of the reviewed evidence, not proof that external applications cannot add them. For focused work on one repository, Codex alone can be sufficient; an additional management layer should justify its complexity with better coordination and outcomes.
+
+## 5. Frameworks and application responsibilities
 
 ### CrewAI
 
-Le **Crews** combinano ruoli, strumenti e incarichi; i **Flows** organizzano stato, eventi, condizioni e diramazioni. `@persist` salva lo stato, con SQLite come backend predefinito e implementazioni sostituibili. È un meccanismo da incorporare nel proprio processo applicativo. [Crews/Flows](https://docs.crewai.com/core-concepts/Agents), [persistenza dei Flow](https://docs.crewai.com/en/concepts/flows).
+Crews combine roles, tools, and tasks. Flows organize state, events, conditions, and branches. Flow persistence is an application mechanism with a default SQLite backend and replaceable implementations. [Agents and crews](https://docs.crewai.com/core-concepts/Agents), [Flow persistence](https://docs.crewai.com/en/concepts/flows).
 
-Sono documentati modelli/provider diversi, integrazione di strumenti e MCP, human input e pause con feedback. **AMP** aggiunge deploy, API e tracce: va distinto dal pacchetto Python. Un “manager” di una crew coordina un'esecuzione; non va automaticamente equiparato al registro aziendale durevole di Paperclip. [LLM](https://docs.crewai.com/en/concepts/llms), [HITL](https://docs.crewai.com/en/learn/human-in-the-loop), [AMP](https://docs.crewai.com/enterprise/introduction).
+The documentation covers model/provider choice, tool/MCP integration, human input, and feedback pauses. AMP adds deployment, APIs, and tracing and should be distinguished from the Python package. A crew manager coordinating a run is not automatically equivalent to Paperclip's persistent company registry. [LLMs](https://docs.crewai.com/en/concepts/llms), [human-in-the-loop](https://docs.crewai.com/en/learn/human-in-the-loop), [AMP](https://docs.crewai.com/enterprise/introduction).
 
-### LangGraph e LangSmith
+### LangGraph and LangSmith
 
-LangGraph permette di mescolare nodi di codice e decisioni LLM, con stato persistente e interruzioni. Un checkpointer in memoria non sopravvive al riavvio: la durabilità dipende anche dal backend scelto. `interrupt()` consente di fermare il flusso in attesa di input e poi riprenderlo. [Overview](https://docs.langchain.com/oss/python/langgraph/overview), [persistence](https://docs.langchain.com/oss/python/langgraph/persistence), [interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts).
+LangGraph combines code nodes and model decisions with state and interruptions. Checkpoints can support continuation and failure recovery, but an in-memory backend does not survive process restart. `interrupt()` can pause a flow until external input arrives. These execution checkpoints should be distinguished from long-term stored facts or preferences. [Overview](https://docs.langchain.com/oss/python/langgraph/overview), [persistence](https://docs.langchain.com/oss/python/langgraph/persistence), [interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts).
 
-LangSmith aggiunge osservabilità, valutazioni e deploy; il suo Agent Server gestisce thread/run e supporta cron, anche su un thread esistente oppure su thread nuovi. Queste capacità di piattaforma non vanno attribuite indistintamente alla sola libreria LangGraph. Le schedulazioni della guida consultata sono UTC. [Deployment cron](https://docs.langchain.com/langsmith/cron-jobs), [data plane](https://docs.langchain.com/langsmith/data-plane).
+LangSmith adds observability, evaluation, and deployment. Its Agent Server manages threads/runs and supports scheduled work on existing or new threads. These platform functions should not be attributed indiscriminately to the standalone LangGraph library. The scheduling guide reviewed uses UTC. [Deployment cron](https://docs.langchain.com/langsmith/cron-jobs), [data plane](https://docs.langchain.com/langsmith/data-plane).
 
-### Microsoft Agent Framework / AutoGen
+### Microsoft Agent Framework and AutoGen
 
-La fonte Microsoft presenta Agent Framework come successore diretto di AutoGen e Semantic Kernel. Il repository **AutoGen è in maintenance mode**: le comparazioni basate solo sui vecchi esempi di group chat non rappresentano l'intera offerta corrente. [Overview](https://learn.microsoft.com/en-us/agent-framework/overview/), [stato di AutoGen](https://github.com/microsoft/autogen).
+Microsoft presents Agent Framework as the successor to AutoGen and Semantic Kernel. AutoGen is in maintenance mode; comparisons based only on older group-chat examples omit the current offering. [Framework overview](https://learn.microsoft.com/en-us/agent-framework/overview/), [AutoGen repository](https://github.com/microsoft/autogen).
 
-Agent Framework combina modelli/provider, strumenti/MCP, sessioni, middleware e workflow. Le interazioni umane sono esplicite richieste/risposte; il checkpoint conserva anche le richieste pendenti. L'estensione Durable Task aggiunge ripresa distribuita, timer ed eventi, separatamente dal semplice checkpoint di un workflow locale. Scheduling, infrastruttura e UI di controllo vanno valutati insieme al componente di hosting scelto. [HITL](https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop), [Durable Extension](https://learn.microsoft.com/en-us/agent-framework/hosting/azure-functions).
+Agent Framework combines providers, tools/MCP, sessions, middleware, and workflows. Human interactions use explicit requests/responses, including pending requests preserved by checkpoints. The Durable Task extension adds distributed continuation, timers, and events, separately from local workflow checkpoints. Evaluate scheduling, infrastructure, and user controls together with the hosting component. [Human-in-the-loop](https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop), [Durable Extension](https://learn.microsoft.com/en-us/agent-framework/hosting/azure-functions).
 
-## 5. Runtime e gateway
+## 6. Execution runtimes and gateways
 
 ### OpenHands
 
-Il Software Agent SDK distingue comportamento dell'agente, conversazione, strumenti e workspace; Agent Server rende l'esecuzione accessibile a client remoti. Sono possibili workspace locali o isolati. Modelli/provider, skill e MCP sono integrabili. [Architettura](https://docs.openhands.dev/sdk/arch/overview).
+The Software Agent SDK separates agent behavior, conversations, tools, and workspaces. Agent Server exposes execution to remote clients, with local or isolated workspace options and model/tool/skill/MCP integration. [Architecture](https://docs.openhands.dev/sdk/arch/overview).
 
-La persistenza conserva stato ed eventi della conversazione. `TaskToolSet` delega a subagenti riprendibili tramite ID: il pattern specifico documentato è **sincrono e bloccante**, non prova che ogni delega sia parallela. Le policy di conferma delle azioni sono distinte dall'analizzatore del rischio. [Persistence](https://docs.openhands.dev/sdk/guides/convo-persistence), [TaskToolSet](https://docs.openhands.dev/sdk/guides/task-tool-set), [Security](https://docs.openhands.dev/sdk/guides/security).
+Persistence retains conversation state and events. `TaskToolSet` delegates to resumable subagents identified by ID; the specific documented pattern is synchronous and blocking, so it does not establish that every delegation runs in parallel. Action confirmation policies and risk analysis are distinct controls. [Conversation persistence](https://docs.openhands.dev/sdk/guides/convo-persistence), [TaskToolSet](https://docs.openhands.dev/sdk/guides/task-tool-set), [security](https://docs.openhands.dev/sdk/guides/security).
 
-Il repository corrente separa il servizio **OpenHands/automation**, responsabile di cron, webhook, cronologia e dispatch, dal SDK che esegue le conversazioni. È quindi scorretto trattare la libreria da sola come tutta la piattaforma. [Confini SDK](https://github.com/OpenHands/software-agent-sdk), [Automation](https://github.com/OpenHands/automation).
+The repositories separate automation services for cron, webhooks, history, and dispatch from the SDK executing conversations. The library alone should not be described as the entire platform. [SDK boundaries](https://github.com/OpenHands/software-agent-sdk), [Automation](https://github.com/OpenHands/automation).
 
 ### OpenClaw
 
-Il Gateway instrada messaggi verso agenti distinti per workspace, identità, configurazione e sessioni. Le binding collegano canali/account agli agenti; non sono da sole una gerarchia di responsabili. La documentazione comprende inoltre subagenti, lavoro in background e flussi durevoli. [Multi-agent routing](https://docs.openclaw.ai/concepts/multi-agent), [Automation](https://docs.openclaw.ai/automation).
+The gateway routes messages to agents with separate workspaces, identities, configurations, and sessions. Bindings connect channels/accounts to agents; routing is not itself a reporting hierarchy. Documentation also covers subagents, background work, and automation. [Multi-agent routing](https://docs.openclaw.ai/concepts/multi-agent), [automation](https://docs.openclaw.ai/automation).
 
-Sono documentati molti provider, plugin, canali e strumenti; le automazioni persistono e possono essere avviate a orario o attraverso eventi. Le approvazioni di esecuzione possono essere rivolte all'operatore e conservare autorizzazioni circoscritte. Un'autorità sul comando e un'approvazione manageriale di un deliverable sono funzioni diverse. [Features](https://docs.openclaw.ai/concepts/features), [automazioni correnti](https://docs.openclaw.ai/releases/2026.8.1/automations-and-scheduling), [exec approvals](https://docs.openclaw.ai/tools/exec-approvals).
+Providers, plugins, channels, and tools can be integrated. Execution approvals can be directed to the operator and retain bounded authorizations. Command permission remains different from approving a business deliverable. Scheduling and background behavior must be checked against the installed version. [Features](https://docs.openclaw.ai/concepts/features), [automation release documentation](https://docs.openclaw.ai/releases/2026.8.1/automations-and-scheduling), [execution approvals](https://docs.openclaw.ai/tools/exec-approvals).
 
-## 6. Matrice delle capacità verificate
+## 7. Additional product references
 
-**Nativo** significa descritto come funzione del componente indicato, non automaticamente attivo. **Da costruire/verificare** significa che le fonti lette non stabiliscono un equivalente pronto con la stessa semantica; non significa “impossibile”. Le fonti di ciascuna riga sono sviluppate nelle sezioni precedenti.
+These systems were reviewed for specific patterns, not ranked against the frameworks above:
 
-| Sistema | Persistenza del lavoro | Organigramma | Budget organizzativo | Approvazione / intervento umano |
-|---|---|---|---|---|
-| Paperclip | Issue, assegnazioni, run e contesto dei runner | Nativo | Policy per organizzazione/agente/progetto | Governance, review gate, commenti, riassegnazione, pausa |
-| Codex | Thread, sessioni, artifact e workspace | Ruoli/subagenti; organigramma aziendale non attestato | Equivalente per dipendente non attestato | Approvazioni di esecuzione e steering della chat/agenti |
-| CrewAI | Stato Flow persistito; configurare backend e lifecycle | Ruoli e manager nel workflow | Da costruire/verificare nel livello piattaforma | Human input/feedback; funzioni AMP distinte |
-| LangGraph / LangSmith | Checkpoint, thread e store; backend esplicito | Grafo/supervisore definito dall'app | Da costruire/verificare | Interrupt, modifica/input e ripresa; UI da integrare |
-| Microsoft Agent Framework | Sessioni/checkpoint; Durable Extension per hosting durevole | Pattern definiti in codice | Da costruire/verificare | Richieste/risposte, tool approval e ripresa |
-| OpenHands | Conversazioni, eventi e subtask riprendibili | Relazione padre/subagente; company registry non attestato | Metriche native; equivalenza mensile aziendale non attestata | Confirmation policy, messaggi e lifecycle conversazione |
-| OpenClaw | Sessioni per agente, task e automazioni | Routing/identità; company hierarchy non attestata | Equivalente di budget aziendale non verificato | Approvals operativi e controllo di task/automazioni |
+| Reference | Documented pattern | Potential application to Fuori Studio |
+| --- | --- | --- |
+| [Relevance AI Workforces](https://relevanceai.com/docs/get-started/core-concepts/workforces) | Specialized agents, mandatory or agent-chosen handoffs, conditional paths, and inspection of inputs/outputs | Make reusable product processes explicit and inspectable; add conditions only when a real brief needs them |
+| [Conductor](https://www.conductor.build/docs/concepts/parallel-agents) | Separate workspaces for independently deliverable changes; shared workspaces for agents collaborating on one branch | Future repository execution with clear review paths and deliberate sharing boundaries |
+| [Superset](https://docs.superset.sh/) | Parallel coding work, isolated Git worktrees, multiple agent runtimes, and integrated diff/review actions | Evaluate how execution and review can fit into one daily workspace |
+| [Gas Town](https://github.com/gastownhall/gastown) | Persistent work identities and records, coordination, handoffs, and recovery around coding agents | Learn from work surviving session replacement; avoid adopting organizational complexity without need |
+| [Dify](https://www.dify.ai/workflows) | Visual workflows combining model calls, retrieval, tools, branches, triggers, and human review | Future integrations and repeatable processes, with visible execution and human checkpoints |
 
-| Sistema | Modelli e strumenti | Avvio per orario/evento | Ispezione e audit |
-|---|---|---|---|
-| Paperclip | Runner eterogenei tramite adattatori; skill/integrations dipendono dal runner | Heartbeat, cron, webhook, API, assegnazioni/menzioni | Activity Log, issue, decisioni, transcript, costi |
-| Codex | Modelli/ruoli configurabili; tool, MCP, skill e plugin secondo superficie | Scheduled tasks documentate; integrazione eventi da valutare per superficie | Cronologia, eventi, risultati, diff e controllo dei subagenti |
-| CrewAI | LLM/provider e strumenti configurabili, MCP | Eventi Flow; cron/trigger esterni dipendono dall'host o piattaforma | Callback/eventi; tracing e monitoraggio AMP |
-| LangGraph / LangSmith | Nodi e strumenti scelti dallo sviluppatore | Run/API e cron di LangSmith Deployment | Checkpoint e tracing/evaluation LangSmith |
-| Microsoft Agent Framework | Più provider, tool/MCP e middleware | Timer/eventi attraverso hosting/Durable Task | Eventi, middleware/telemetria; UI e retention da configurare |
-| OpenHands | Provider, tool, skill/MCP, workspace | Servizio Automation: cron/webhook/dispatch | Event log persistito, metriche e run history dell'automazione |
-| OpenClaw | Più provider, canali e plugin; tool policy per agente | Automazioni, heartbeat e hook | Sessioni, task ledger, run history e approvazioni |
+Conductor here means the product at `conductor.build`; Superset means the coding application, not Apache Superset. These references do not establish that Fuori Studio must adopt their runtime, copy their interface, or install every listed framework.
 
-Non confondere **token/cost tracking** con **hard stop di spesa**, **trace di debug** con **audit immodificabile**, **persistenza della chat** con **garanzia di ripresa di ogni effetto esterno**, oppure **MCP disponibile** con **credenziali e autorizzazioni già collegate**. Sono distinzioni tecniche da mantenere nelle domande successive.
+## 8. Capability comparison and interpretation
 
-## 7. Implicazioni per Fuori Studio, senza decisioni di implementazione
+“Native” means documented for the component named, not automatically enabled. “Build/verify” means the reviewed sources do not establish an equivalent ready-made capability with the same semantics; it does not mean impossible.
 
-Queste sono inferenze progettuali ricavate dal confronto:
+| System | Persistent work | Organization | Budget control | Human intervention |
+| --- | --- | --- | --- | --- |
+| Paperclip | Issues, assignments, runs, runner context | Native company hierarchy | Company, agent, and project policies | Governance, review gates, comments, reassignment, pause |
+| Codex | Threads, sessions, artifacts, workspaces | Roles/subagents; company hierarchy not established by this review | Equivalent employee budget not established | Execution approvals and steering of chats/agents |
+| CrewAI | Persisted Flow state; configure backend and lifecycle | Workflow roles and managers | Build/verify at platform level | Input/feedback; distinguish AMP features |
+| LangGraph / LangSmith | Checkpoints, threads, stores with explicit backend | Application-defined graph/supervisor | Build/verify | Interrupt, input/state changes, continuation |
+| Microsoft Agent Framework | Sessions/checkpoints; Durable Extension for durable hosting | Code-defined patterns | Build/verify | Requests/responses, tool approval, continuation |
+| OpenHands | Conversations, events, resumable subtasks | Parent/subagent relation; company registry not established | Metrics are not proof of monthly company enforcement | Confirmation policies and conversation lifecycle |
+| OpenClaw | Agent sessions and automation state | Routing/identity; company hierarchy not established | Company budget equivalence not verified | Operational approvals and task/automation controls |
 
-1. **Il possibile valore di Fuori Studio non dipende dall'inventare la delega multi-agente.** Codex e altri runtime la offrono già. Il prodotto può distinguersi nel dare continuità al lavoro personale: obiettivi, prossime azioni, artefatti, interventi richiesti e contesto fra progetti.
-2. **Il diorama deve rappresentare stati verificabili.** “Sta lavorando” può collegarsi a un run, “aspetta” a un'approvazione, “bloccato” a una dipendenza. L'animazione da sola non dimostra collaborazione fra processi autonomi.
-3. **Un ruolo persistente e un worker non sono la stessa entità.** Un collega del team può conservare responsabilità mentre il motore sottostante cambia modello, apre una nuova sessione o delega lavoro temporaneo.
-4. **Prima di scegliere un framework, definire il confine.** Per una conversazione che aiuta Riccardo a ragionare bastano funzioni diverse rispetto a una squadra che esegue lavori per giorni, riceve eventi, produce modifiche e attende review.
-5. **Composizione e costruzione propria sono entrambe possibilità.** Fuori Studio potrebbe usare direttamente un runtime oppure una piattaforma organizzativa come Paperclip. Valutarle richiede un incarico concreto end-to-end; questa ricerca non autorizza né decide una migrazione.
+Model and tool flexibility also has different boundaries. Paperclip delegates to adapters; Codex provides runtime tools and integrations according to its interface; CrewAI and Microsoft Agent Framework expose framework extension points; LangGraph leaves node/tool choices to the developer; OpenHands supplies a software-agent runtime; OpenClaw adds channels and gateway routing. The linked sections above identify those boundaries.
 
-Domande utili per il prossimo confronto: quale lavoro deve continuare senza la chat aperta; quali artefatti devono produrre gli agenti; chi può pubblicare o modificare sistemi esterni; come si conserva il contesto; come si riconosce un blocco; dove vive il limite di spesa; come si interrompe e riprende lo stesso incarico.
+Do not equate token accounting with a monetary hard stop, a debug trace with an immutable audit trail, chat persistence with exactly-once external execution, or an MCP interface with already configured credentials and permissions. A provider connection is not a tool integration, and a model disagreement is not evidence that the second answer is correct.
+
+## 9. Next decisions for Fuori Studio
+
+These are product judgments drawn from the review, not measured competitor advantages:
+
+1. **Validate the owned-product loop first.** Run real briefs through scoped context, tasks, steps, artifacts, revision, and approval. Measure useful deliveries, correction effort, and coordination time before increasing agent count.
+2. **Extend execution with explicit capabilities.** Read-only research, document ingestion, and isolated repository work are future features. Each needs data boundaries, provenance, and tested action permissions. Approving a text artifact must not silently authorize publication or a repository write.
+3. **Separate role identity from model choice.** Keep project records and permissions stable while changing a role's connection. Compare actual briefs before claiming a cheaper, faster, or more capable model assignment.
+4. **Grow reliability before unattended work.** Current routines queue tasks. External event triggers or automatic execution should follow proven retry, idempotency, cost, and notification policies, rather than being implied by a scheduler.
+5. **Treat deployment as a new boundary.** Local private JSON stores and one-user controls do not supply multi-user identity, tenant isolation, encrypted secret management, or cloud execution. Those require separate implementation and verification.
+6. **Evaluate composition only against a concrete need.** Fuori Studio can continue using direct adapters or later integrate an orchestration platform such as Paperclip. A full task with failure, retry, review, and delivery is a better evaluation than a feature-list comparison.
+
+The proposed advantage is less manual coordination around useful product work. It must be demonstrated through completed, reviewable outcomes; neither a 3D office nor a list of connected model providers establishes it on its own.

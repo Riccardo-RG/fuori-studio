@@ -1,68 +1,89 @@
 # Fuori Studio
 
-Fuori Studio is a local 3D office for an AI team. Its block-style coworkers work at the center of a sprawling anthill, surrounded by busy ants. Forest, beach, and mountain landscapes are also available. A shared chat uses the Codex installation already signed in on your Mac.
+A local AI studio for building and growing your own products. Organize projects, keep scoped memory, run work through named agents, and review versioned deliverables before accepting them. The explorable Three.js office is a visual theme; its ants do not represent background AI work.
 
-## Current status
+**Current target:** one person, one local server, on a trusted computer. Owned products are the primary workflow. Client consulting and personal activities remain available as separate scopes with explicit sharing.
 
-The office, animated landscapes, shared chat, and parallel specialist responses work locally. This is an early version: project cards describe Riccardo's projects, but they are not connected to their folders or GitHub repositories. Agents can discuss, plan, and draft; they cannot edit project code or perform web research from this app yet.
+## Quick start
 
-## Requirements
-
-- Node.js and npm
-- Codex CLI with an active sign-in (`codex login status`)
-
-## Run locally
+Use **Node.js 24 LTS** and npm. The supported runtime is recorded in `.nvmrc` and `package.json`.
 
 ```sh
-npm install
+nvm use                 # if you use nvm
+npm ci
 npm start
 ```
 
-Open **http://127.0.0.1:4386**. The server listens only on the local loopback interface. To use another port, run `PORT=4387 npm start`.
+Open [the local studio](http://127.0.0.1:4386). Installation vendors the pinned Three.js modules; there is no frontend build step. The server binds only to `127.0.0.1`. Use `PORT=4387 npm start` for another port.
 
-`npm install` copies the required Three.js modules into `dist/vendor/`. The app needs no separate frontend build step.
+The default AI connection uses the Codex CLI already signed in on your computer. Check `codex login status` or set `FUORI_STUDIO_CODEX_BIN=/absolute/path/to/codex`. You can instead configure API services in **Servizi AI**; see [provider setup](docs/PROVIDERS.md). No API key belongs in Git or a chat message.
 
-## Use the office
+## First complete workflow
 
-- Write in the shared chat. Riccardo, the AI team leader, recognizes the context and responds or delegates relevant tasks.
-- Address a coworker directly, for example `@Big Fonz`, without configuring roles or selecting a project for every message.
-- Up to three specialists can work on independent responses in parallel. Their activity in the scene follows actual requests.
-- Explore the anthill (the default landscape), forest, beach, and mountains. The team stays at the center of a larger surrounding world. Ant activity is scenic animation, independent of AI requests.
-- Drag to rotate, use the wheel or **+ / −** buttons to zoom, and **Shift + drag** or right-drag to pan. On touchscreens, pinch to zoom and drag with two fingers to pan.
-- Use **Panorama** to see the full landscape and **Torna al team**, **R**, or **Home** to return to the team. Arrow keys adjust the view.
-- Select a coworker to see their role and start a direct message.
-- Quiet mode pauses character movement. The interface also respects the system's reduced-motion preference.
-- Use **Stop** to cancel a request. Responses already received remain in the conversation.
+1. In **Progetti**, create an owned project. Keep the dedicated-memory option selected to give it its own conversation and notes.
+2. Add the brief and constraints. Save durable decisions in **Memoria** and confirm only the notes you want agents to use.
+3. Create an assignment using the built-in product-brief flow, one responsible agent, or a ready procedure. Its steps become real, persisted execution steps.
+4. Start the assignment. Each completed step is saved. You may pause it and resume later; closing the browser does not stop a task.
+5. Open **Da decidere** to inspect the delivered text, intermediate outputs, context references, and available token counts. Download a Markdown copy, approve it, or request changes with feedback.
+6. After approval, select the memory action to draft an editable pattern or decision. It remains a proposal until explicitly confirmed in **Memoria**.
 
-The five AI coworkers are **Riccardo** (leader), **Raffaele** (research), **Big Fonz** (product and development), **D'albenzio** (content), and **Cicciolina** (business). Their internal identifiers stay unchanged so existing conversations remain associated with the same roles.
+The agents currently analyze supplied information and produce text. They do **not** browse the web, modify repositories, publish content, send messages, or verify external facts. A research step means analysis of your supplied materials. Do not treat a generated plan as an executed change.
 
-## Local data and Codex
+## What works
 
-The active conversation is saved in `.local/chat.json`. Starting a new conversation archives the previous one in `.local/history/`. This directory is ignored by Git and is not served by the web server.
+| Capability | Current behavior |
+| --- | --- |
+| Owned projects | Real project records with scoped tasks; optional client classification |
+| Durable assignments | Ordered steps, single active task, saved outputs, pause/resume, restart after invalidated context |
+| Deliverables | Versioned text, explicit approval or revision requests, Markdown export |
+| Decision inbox | Deliverables waiting for review and interrupted/failed work |
+| Memory | Confirmed/proposed notes, revisions, per-agent access, explicit cross-scope sharing |
+| Procedures | Versioned instructions; selectable in chat or executed as task steps |
+| AI services | Local Codex; API adapters for OpenAI, Anthropic, DeepSeek, OpenRouter |
+| Provider controls | Per-agent service assignment, scope allowlists, no silent provider fallback |
+| Routines | Scheduled creation of queued assignments while the local server runs; manual AI start |
+| Office | Large anthill, forest, beach, mountain; camera navigation and reduced-motion support |
 
-The local server sends your message and recent conversation context to Codex through `codex exec`. It uses your existing Codex sign-in and its associated plan limits; the project does not copy credentials, and the browser never receives them. The server rejects external hosts and origins, and its write endpoints accept only local JSON requests.
+The team is **Riccardo** (AI leader), **Raffaele** (research), **Big Fonz** (product/development), **D’albenzio** (content), and **Cicciolina** (business). Riccardo the AI character is distinct from the human user.
 
-The app detects the Codex binary bundled with the desktop app. To provide another binary, run `FUORI_STUDIO_CODEX_BIN=/path/to/codex npm start`.
+## Local data
 
-Codex runs are ephemeral and use a read-only sandbox. The current prompts explicitly instruct agents not to use tools. Connecting this application's own repository to GitHub does **not** connect the in-app project cards to GitHub.
+All mutable data lives in `.local/`, or in `FUORI_STUDIO_DATA_DIR` when set. The directory is ignored by Git and is outside the served frontend. Cloning the repository does not copy your local AI credentials or conversations.
 
-## Project layout
+- `workspace.json`: scopes, versioned memories and procedures.
+- `operations.json`: projects, assignments, deliverables, events and routines.
+- `providers.json`: service configuration and **unencrypted API keys** with private filesystem permissions.
+- `conversations/`, `chat-selection.json`, `history/`: scoped conversations and archives.
+- `server.lock`: single-server ownership of the data directory.
 
-- `server.mjs` — local HTTP server, request checks, and chat streaming.
-- `lib/chat.mjs` — conversation storage, coordination, and parallel Codex processes.
-- `lib/route.schema.json` — structured coordinator response.
-- `dist/app.js` — chat and office interactions.
-- `dist/data.js` — team roles and project descriptions.
-- `dist/world.js` — geometric Three.js world, landscapes, and animation.
-- `dist/vendor/` — Three.js files and MIT license copied during installation.
-- `PRODUCT.md` — product decisions and current scope (in Italian).
+Existing mixed history in `chat.json` is preserved and opened only in **Conversazione iniziale**. It is not copied into new scopes. There is no automatic data sharing between a parent scope and its children.
 
-Run `npm run check` to check JavaScript syntax. Reload the page after changing frontend files, or restart `npm start` after changing the server.
+Selected context is sent to the assigned AI provider. Local storage does not mean offline inference. Scope boundaries are application-level controls for a single user, not tenant isolation. Read [security and backup guidance](docs/SECURITY.md) before moving or sharing the data directory.
 
-## References
+## Development and verification
 
-- [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
-- [Codex authentication](https://learn.chatgpt.com/docs/auth)
-- [Three.js installation](https://threejs.org/manual/pages/installation.html)
+```sh
+npm run check
+npm test
+```
 
-The world is generated and animated in real time; it does not use the earlier experimental images. Three.js is distributed under the MIT license included at `dist/vendor/THREE-LICENSE.txt`.
+Tests use temporary archives, mocked HTTP responses, and a fake Codex binary. They make no paid API calls. HTTP integration tests bind a loopback port. CI runs the checks on Node 24. Frontend changes need a browser reload; server changes need a restart.
+
+Start with [development guidance](CONTRIBUTING.md), [architecture decisions](docs/ARCHITECTURE.md), and the [HTTP API](docs/API.md). The UI is Italian; engineering and product documentation is English.
+
+## Documentation
+
+- [Product direction and boundaries](PRODUCT.md)
+- [Operating the studio](docs/USER_GUIDE.md)
+- [Architecture and stack decisions](docs/ARCHITECTURE.md)
+- [Memory and context design](docs/MEMORY_DESIGN.md)
+- [Provider setup and adapter limits](docs/PROVIDERS.md)
+- [HTTP API and lifecycle](docs/API.md)
+- [Security, backup and recovery](docs/SECURITY.md)
+- [Competitor research](docs/AGENT_SYSTEMS.md)
+
+## Office controls
+
+Drag to rotate, wheel or **+ / −** to zoom, Shift/right-drag to pan. On touch devices, pinch to zoom and drag with two fingers to pan. **Panorama** shows the whole landscape; **Torna al team**, R or Home resets the view. Arrow keys rotate. Quiet mode and the system reduced-motion preference pause decorative animation.
+
+Three.js is distributed under its MIT license, copied into `dist/vendor/THREE-LICENSE.txt` during installation. The world is built from geometry, not generated images.

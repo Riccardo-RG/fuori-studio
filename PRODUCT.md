@@ -1,55 +1,40 @@
-# Fuori Studio
+# Product direction
 
-## Direzione concordata
+Updated 2026-09-27.
 
-- App locale sul Mac; collegamenti a cartelle e GitHub nelle fasi successive.
-- Ufficio al centro di un grande formicaio laborioso, paesaggio iniziale; restano disponibili bosco, spiaggia e montagna.
-- Grafica 3D stilizzata a blocchi, ispirata alla sensazione di gioco di Roblox; niente persone fotorealistiche o tema spaziale.
-- Colleghi visibilmente animati: camminano, lavorano alle postazioni e collaborano.
-- Mappa ampia attorno al team centrale, con zoom, spostamento della camera, panorama completo e ritorno rapido al team.
-- Formiche che percorrono sentieri e trasportano materiali attorno allo studio; la loro attività è scenografica.
-- Prima consolidare grafica e funzionamento dell'ufficio, poi completare un flusso reale end-to-end.
-- Le attività dimostrative devono essere distinguibili dalle vere esecuzioni AI.
+Fuori Studio helps its owner develop proprietary products and grow as an entrepreneur and software developer. Consulting remains a supported secondary activity. Personal projects live alongside professional work without becoming automatically available to professional agents.
 
-## Chi userà lo studio
+The product's value is continuity: decisions become reusable context, work has a visible state, deliverables are reviewable, and an AI service can be changed without losing the project's records. More agents are not inherently better; use a workflow only when its additional steps improve the result.
 
-Riccardo è uno sviluppatore full stack, mobile e AI. L'ufficio deve aiutarlo a seguire diversi progetti, esplorare trend e opportunità, validare MVP e creare contenuti. Le priorità e i potenziali ricavi non vanno inventati.
+## Product principles
 
-## I progetti descritti
+- **Owned products first.** Do not frame the default experience as an agency managing clients. New projects default to owned and can have dedicated scopes.
+- **Explicit intersections.** Notes can be shared between selected scopes. Parent-child organization grants no implicit access. A globally shared profile must be deliberately curated.
+- **Reviewable results.** A task produces text that the user can inspect, version, revise and approve. Model output never marks itself approved.
+- **Honest capabilities.** Drafting a technical plan is different from editing a repository. Supplied-material analysis is different from live web research.
+- **Provider choice with boundaries.** Roles, context and artifacts belong to the studio. Each agent has an assigned connection; routing obeys the current scope and source-scope policies.
+- **Learning under user control.** Approved work can become a proposed memory. No generated statement silently becomes a confirmed fact.
+- **Calm visual environment.** Anthill, forest, beach and mountain are graphic themes. Animals are decorative. Actual task status drives worker activity.
 
-1. Software che crea gestionali.
-2. Studio per contenuti di avatar e strategia di presenza online.
-3. Collane smart gemelle che si inviano impulsi.
-4. Gestionale HORECA: menu online, prenotazioni e servizi.
-5. Chat di gruppo con agente orientato a progetti e obiettivi.
-6. Gioco Roblox.
-7. App turismo assegnate dal datore di lavoro.
-8. Landing e gestionale per la presenza online di un personal trainer.
+## Current working loop
 
-Questi nomi e le schede del prototipo sono descrizioni di lavoro. Non attestano l'accesso ai repository.
+Project → brief → optional procedure → persisted steps → versioned delivery → review or changes → approval → proposed reusable memory.
 
-## Ruoli del team
+The chat remains useful for exploration. It is separate from durable assignments: a request in chat does not silently create, run or approve a task. Scheduled routines create queued tasks and do not silently spend AI credits.
 
-- Riccardo: leader AI, coordina gli incarichi e prepara le decisioni.
-- Raffaele: ricerca, fonti, alternative e trend.
-- Big Fonz: prodotto, sviluppo e prove tecniche.
-- D'albenzio: contenuti, idee e dimostrazioni.
-- Cicciolina: pubblico, distribuzione e ipotesi commerciali.
+## Current boundaries
 
-## Prima versione funzionante
+This release is a local, single-user text-work orchestration product. It includes multiple provider adapters, scoped memory, persistent assignments, review, recovery and queued routines. It does not include repository-editing tools, browser research, document ingestion, autonomous external actions, shared accounts, hosted execution, semantic search, automatic memory extraction, or hard monetary budgets.
 
-La chat è l'ingresso principale dell'ufficio: Riccardo, il leader AI, risponde o riconosce il contesto e coinvolge gli specialisti utili. Gli incarichi indipendenti possono essere eseguiti in parallelo. L'utente può rivolgersi a una persona senza dover configurare ruoli e progetti a ogni messaggio.
+Provider usage is shown only when returned by the adapter. Missing usage is unknown, not zero. No costs or business metrics are invented. External provider connections require the user's own valid API credentials; consumer subscriptions do not automatically supply API credit.
 
-Codex è installato e autenticato sul Mac. L'utente ha autorizzato esplicitamente l'uso di questo motore. La chat usa risposte AI reali tramite processi Codex effimeri in sola lettura, e salva la conversazione sul Mac.
+## Further delivery gates
 
-Il mondo Three.js a blocchi ha quattro paesaggi, camera interattiva e colleghi articolati che camminano e lavorano. Gli stati di attività del team seguono le richieste effettive. Il formicaio è lo scenario iniziale: i colleghi occupano il centro, mentre sentieri e formiche laboriose animano il territorio circostante.
+1. Run real owned-product briefs through the full loop and measure correction rate, useful-output rate and coordination time.
+2. Add repository workspaces and read-only research tools with explicit capabilities, domain/path restrictions, and action-specific approvals before enabling writes or publication.
+3. Introduce document ingestion and semantic retrieval while retaining provenance, revocation and access controls.
+4. Move JSON stores to transactional storage before multiple worker processes, collaborators or remote hosting. Add tested schema migration and backup restoration.
+5. Add encrypted credential management, authenticated users and tenant isolation before any public deployment.
+6. Add event integrations and opt-in unattended execution only after cost, retry, idempotency and notification policies are proven.
 
-La camera consente rotazione con trascinamento, zoom con rotella o pulsanti +/− e spostamento con Shift + trascinamento o tasto destro. Su touch si usano due dita per zoom e spostamento. I comandi Panorama e Torna al team passano dalla mappa completa alle postazioni centrali.
-
-I cinque personaggi conservano gli identificatori interni per mantenere le conversazioni esistenti. Nella cronologia inviata al motore AI, la persona è indicata come Utente e il leader come Riccardo. Si aggiorna soltanto il vecchio messaggio di benvenuto standard, senza riscrivere i messaggi scambiati.
-
-## Confini attuali
-
-Nessun repository esterno è stato letto o modificato. Le schede dei progetti derivano dalle descrizioni dell'utente, non da cartelle collegate. La chat non ha ricerca web o strumenti per modificare codice. Non deve presentare come eseguite ricerche o attività che non sono avvenute.
-
-Le integrazioni a cartelle e GitHub restano un passo successivo. L'utente ha dato precedenza a grafica, movimento e chat condivisa.
+No public deployment, third-party account connection, or purchase is implied by local implementation.
