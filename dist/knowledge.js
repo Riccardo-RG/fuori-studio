@@ -1,4 +1,6 @@
 import { agents } from './data.js';
+import { scopeIdentity } from './experience-state.js';
+import { icon } from './studio-icons.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const typeNames = { fact:'Informazione', preference:'Preferenza', decision:'Decisione', pattern:'Metodo ricorrente' };
@@ -9,7 +11,7 @@ const formattedDate = value => {
 };
 
 /** A local, inspectable knowledge library. The application owns conversation switching. */
-export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () => {} }) {
+export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversationId = () => null, toast = () => {} }) {
   const panel = document.createElement('section');
   panel.id = 'knowledge-panel';
   panel.className = 'knowledge-panel';
@@ -17,10 +19,12 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
   panel.innerHTML = `
     <div class="knowledge-heading"><div><div class="eyebrow">IL FILO DEL TUO LAVORO</div><h2 id="knowledge-title">La memoria dello studio.</h2><p>Contesti distinti. Collegamenti scelti da te.</p></div><button type="button" class="knowledge-button" data-action="new-scope" disabled>＋ Nuovo ambito</button></div>
     <div class="knowledge-toolbar"><div class="knowledge-scope-field"><label for="knowledge-scope">Ambito attivo · lo stesso della chat</label><select id="knowledge-scope" disabled><option>Caricamento…</option></select></div><p class="knowledge-scope-note" id="knowledge-scope-note">Le informazioni rimangono nel loro ambito. Puoi rendere disponibili singole note anche altrove.</p></div>
+    <section id="memory-assistant" class="memory-assistant" aria-label="Memoria assistita" hidden></section>
+    <div class="memory-transfer-tools"><span>Il tuo archivio</span><button type="button" class="knowledge-text-button" data-action="memory-export">Esporta</button><button type="button" class="knowledge-text-button" data-action="memory-import">Importa</button></div>
     <div class="knowledge-controls"><div class="knowledge-tabs" role="tablist" aria-label="Archivio dello studio"><button id="knowledge-tab-memories" type="button" role="tab" aria-selected="true" aria-controls="knowledge-results" data-tab="memories">Memoria <span data-count="memories">0</span></button><button id="knowledge-tab-workflows" type="button" role="tab" aria-selected="false" aria-controls="knowledge-results" tabindex="-1" data-tab="workflows">Procedure <span data-count="workflows">0</span></button></div><div class="knowledge-list-actions"><label class="visually-hidden" for="knowledge-search">Cerca nell’ambito attivo</label><input id="knowledge-search" type="search" placeholder="Cerca in questo ambito…" autocomplete="off" maxlength="200"><button type="button" class="knowledge-button is-primary" data-action="new-entry" disabled>＋ Nuova memoria</button></div></div>
     <div id="knowledge-feedback" class="knowledge-feedback" role="status" aria-live="polite">Caricamento della memoria…</div>
     <div id="knowledge-results" class="knowledge-results" role="tabpanel" aria-labelledby="knowledge-tab-memories" tabindex="0"></div>
-    <p class="knowledge-footnote">Le proposte diventano contesto per gli agenti solo dopo la tua conferma. Le procedure preparano il lavoro in chat.</p>`;
+    <p class="knowledge-footnote">Le proposte diventano contesto per gli agenti solo dopo la tua conferma. Le procedure organizzano il lavoro in chat e negli incarichi.</p>`;
   const insertion = document.querySelector('.team-section') || document.querySelector('main footer');
   if (insertion) insertion.before(panel);
   else document.querySelector('main')?.append(panel);
@@ -67,7 +71,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
 
   function syncControls() {
     const disabled = locked();
-    panel.querySelectorAll('[data-action]').forEach(button => { button.disabled = disabled && button.dataset.action !== 'retry'; });
+    panel.querySelectorAll('[data-action]').forEach(button => { button.disabled = (disabled && button.dataset.action !== 'retry') || button.dataset.readonly === 'true'; });
     $('#knowledge-scope').disabled = disabled;
     chatScope.querySelector('select').disabled = disabled;
     panel.setAttribute('aria-busy', String(loading || switching));
@@ -86,9 +90,11 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
   }
 
   function origin(item) {
-    if (item.scopeId === currentScope) return `<span class="knowledge-tag">${escape(scopeName(item.scopeId))}</span>`;
-    if (isShared(scopeFor(item.scopeId))) return `<span class="knowledge-tag is-shared">Profilo comune · tutti gli ambiti</span>`;
-    return `<span class="knowledge-tag is-shared">Collegata da ${escape(scopeName(item.scopeId))}</span>`;
+    const identity = scopeIdentity(scopeFor(item.scopeId));
+    const mark = icon(identity.icon);
+    if (item.scopeId === currentScope) return `<span class="knowledge-tag scope-badge" data-scope-kind="${escape(identity.kind)}" style="--scope-color:${identity.color}">${mark}${escape(scopeName(item.scopeId))}</span>`;
+    if (isShared(scopeFor(item.scopeId))) return `<span class="knowledge-tag is-shared scope-badge">${mark}Profilo comune · tutti gli ambiti</span>`;
+    return `<span class="knowledge-tag is-shared scope-badge">${mark}Collegata da ${escape(scopeName(item.scopeId))}</span>`;
   }
 
   function revisionButton(item) {
@@ -104,6 +110,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
   }
 
   function render() {
+    renderAssistant();
     panel.querySelectorAll('[data-tab]').forEach(button => {
       const selected = button.dataset.tab === activeTab;
       button.setAttribute('aria-selected', String(selected));
@@ -191,8 +198,8 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
       syncControls();
       dialog.querySelectorAll('button').forEach(button => { button.disabled = true; });
       try {
-        await onSubmit(new FormData(form), form);
-        dialog.close();
+        const shouldClose=await onSubmit(new FormData(form), form);
+        if(shouldClose!==false)dialog.close();
       } catch (error) {
         errorBox.textContent = error.status === 409 ? `${error.message} Le modifiche nel modulo sono conservate. Chiudi e riapri la scheda per caricare l’ultima versione.` : error.message;
         errorBox.hidden = false;
@@ -238,6 +245,99 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
     syncScopes();
     render();
     toast(message);
+  }
+
+  function memoryPolicy() {
+    return snapshot.memoryAssistant?.policies?.find(item=>item.scopeId===currentScope) || {scopeId:currentScope,version:1,mode:'assisted',learningEnabled:true,automaticTypes:[]};
+  }
+  function renderAssistant() {
+    const host=$('#memory-assistant');if(!host)return;
+    if(loading||failed){host.hidden=true;return;}host.hidden=false;
+    const policy=memoryPolicy(),scope=scopeFor(currentScope),manualScope=isShared(scope)||scope?.kind==='archive';
+    const candidates=(snapshot.memoryAssistant?.candidates||[]).filter(item=>item.scopeId===currentScope&&item.status==='pending');
+    const actions=(snapshot.memoryAssistant?.actions||[]).filter(item=>item.source?.scopeId===currentScope&&!item.undoneAt).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,3);
+    const mode=manualScope?'Manuale':!policy.learningEnabled?'Apprendimento in pausa':({manual:'Manuale',assisted:'Assistita',automatic:'Automatica'})[policy.mode];
+    const description=manualScope?'Qui le memorie si aggiungono e si rivedono manualmente.':!policy.learningEnabled?'La chat continua a essere conservata. Le nuove conversazioni non generano ricordi automatici.':policy.mode==='manual'?'Decidi tu cosa conservare usando “Ricorda questo” o una nota manuale.':policy.mode==='automatic'?'Le categorie che hai autorizzato possono essere salvate. Le altre proposte aspettano la tua conferma.':'Lo studio propone i ricordi utili. Li rivedi prima che diventino contesto per gli agenti.';
+    host.innerHTML=`<div class="memory-assistant-head"><div><div class="memory-assistant-label">MEMORIA DELL’AMBITO <span>${escape(mode)}</span></div><p>${escape(description)}</p></div>${!manualScope?'<button type="button" class="knowledge-button" data-action="memory-policy">Impostazioni</button>':''}<details class="access-help memory-help"><summary aria-label="Aiuto: memoria assistita">?</summary><div><strong>Chat e memoria sono diverse.</strong><p>La cronologia conserva la conversazione. La memoria raccoglie informazioni riutilizzabili in questo ambito. Le proposte in attesa non vengono fornite agli agenti.</p></div></details></div>${candidates.length?`<details class="memory-inbox"${candidates.length<=2?' open':''}><summary><span>Da rivedere <b>${candidates.length}</b></span><small>Proposte, non ancora memorie</small></summary><div class="memory-inbox-grid">${candidates.map(item=>`<article class="memory-candidate"><div class="memory-candidate-meta"><span>${escape(typeNames[item.type])}</span>${item.conflicts?.length?'<span class="memory-candidate-warning">Confronto necessario</span>':item.sensitivity==='sensitive'?'<span class="memory-candidate-warning">Conferma personale</span>':''}</div><h3>${escape(item.title)}</h3><p>${escape(short(item.content,360))}</p><details class="memory-source"><summary>Dal tuo messaggio · ${escape(formattedDate(item.createdAt))}</summary><blockquote>${escape(item.source?.quote||item.content)}</blockquote><small>${escape(scopeName(item.scopeId))} · messaggio ${escape(item.source?.messageId || '')}</small></details><div class="knowledge-card-actions"><button type="button" class="knowledge-button is-primary" data-action="candidate-review" data-id="${escape(item.id)}">${item.conflicts?.length?'Confronta e scegli':'Rivedi e conferma'}</button><button type="button" class="knowledge-text-button" data-action="candidate-reject" data-id="${escape(item.id)}">Scarta</button></div></article>`).join('')}</div></details>`:'<p class="memory-inbox-empty">Nessuna proposta in attesa in questo ambito.</p>'}${actions.length?`<details class="memory-recent"><summary>Ricordi salvati di recente</summary>${actions.map(action=>{const memory=snapshot.memories.find(item=>item.id===action.memoryId),undoable=memory&&memory.version===action.memoryVersion;return `<div><span><strong>${escape(memory?.title||'Memoria salvata')}</strong><small>${action.kind==='replace'?'Aggiornata':'Aggiunta'} ${escape(formattedDate(action.createdAt))}</small></span><button type="button" class="knowledge-text-button" data-action="memory-undo" data-id="${escape(action.id)}"${!undoable?' disabled data-readonly="true"':''} title="${undoable?'Annulla questo salvataggio':'La memoria è stata modificata successivamente'}">Annulla salvataggio</button></div>`;}).join('')}</details>`:''}`;
+  }
+  function openMemoryPolicy() {
+    const policy=memoryPolicy();
+    const body=`<p class="knowledge-form-intro">Queste scelte valgono soltanto per <strong>${escape(scopeName(currentScope))}</strong>. Non cambiano gli altri ambiti.</p><label class="memory-learning-toggle"><input type="checkbox" name="learningEnabled"${policy.learningEnabled?' checked':''}><span><strong>Apprendimento dai messaggi</strong><small>Consenti allo studio di proporre ricordi dalle nuove conversazioni.</small></span></label><div class="knowledge-field"><label for="memory-policy-mode">Come conservare i ricordi</label><select id="memory-policy-mode" name="mode"><option value="manual"${policy.mode==='manual'?' selected':''}>Manuale · salvo io le informazioni</option><option value="assisted"${policy.mode==='assisted'?' selected':''}>Assistita · rivedo ogni proposta</option><option value="automatic"${policy.mode==='automatic'?' selected':''}>Automatica · solo le categorie che scelgo</option></select></div><fieldset class="knowledge-sharing memory-automatic-types"${policy.mode!=='automatic'?' hidden':''}><legend>Categorie ammesse al salvataggio automatico</legend><p class="knowledge-hint">Solo dichiarazioni dirette, senza conflitti o contenuti sensibili. Le altre informazioni rimangono proposte da rivedere.</p><div class="knowledge-check-grid"><label><input type="checkbox" name="automaticTypes" value="preference"${policy.automaticTypes.includes('preference')?' checked':''}><span>Preferenze esplicite</span></label><label><input type="checkbox" name="automaticTypes" value="pattern"${policy.automaticTypes.includes('pattern')?' checked':''}><span>Metodi e abitudini ricorrenti</span></label></div></fieldset><div class="knowledge-notice">Disattivare l’apprendimento non cancella la chat o i ricordi già salvati. “Ricorda questo” e le note manuali restano disponibili.</div>`;
+    const scopeId=currentScope;
+    openDialog('Come ricorda questo ambito',body,'Salva preferenze',async data=>{
+      await save('setMemoryPolicy',{scopeId,expectedVersion:policy.version,mode:data.get('mode'),learningEnabled:data.get('learningEnabled')==='on',automaticTypes:data.get('mode')==='automatic'?data.getAll('automaticTypes'):[]},'Preferenze della memoria aggiornate.');
+    });
+    dialog.querySelector('[name="mode"]').addEventListener('change',event=>dialog.querySelector('.memory-automatic-types').hidden=event.target.value!=='automatic');
+  }
+  function openCandidate(item) {
+    const conflicts=item.conflicts||[];
+    const body=`<p class="knowledge-form-intro">Questa proposta arriva da un tuo messaggio in <strong>${escape(scopeName(item.scopeId))}</strong>. Puoi correggerla prima di renderla disponibile al team.</p>${field('Titolo','title',item.title,{required:true,max:140})}<div class="knowledge-field"><label for="memory-candidate-type">Tipo</label><select id="memory-candidate-type" name="type">${Object.entries(typeNames).map(([value,label])=>`<option value="${value}"${item.type===value?' selected':''}>${escape(label)}</option>`).join('')}</select></div>${field('Contenuto da ricordare','content',item.content,{area:true,rows:5,required:true})}<details class="memory-source" open><summary>Messaggio originale</summary><blockquote>${escape(item.source?.quote||'')}</blockquote><small>Fonte conservata con la memoria · ${escape(item.source?.messageId||'')}</small></details>${conflicts.length?`<fieldset class="memory-conflict-choice"><legend>Esistono memorie sullo stesso tema</legend><p class="knowledge-hint">Scegli esplicitamente se mantenere entrambe le informazioni o sostituire una memoria. Nessuna voce viene sovrascritta in automatico.</p><label><input type="radio" name="conflictChoice" value="keepBoth" required><span><strong>Conserva anche questa nuova memoria</strong><small>Le versioni rimangono come due informazioni distinte.</small></span></label>${conflicts.map(conflict=>`<label><input type="radio" name="conflictChoice" value="replace:${escape(conflict.id)}" required><span><strong>Sostituisci “${escape(conflict.title)}”</strong><small>Versione ${escape(conflict.version)}</small><p>${escape(conflict.content)}</p></span></label>`).join('')}</fieldset>`:''}`;
+    openDialog('Rivedi il ricordo proposto',body,'Conferma memoria',async data=>{
+      const choice=data.get('conflictChoice'),replace=choice?.startsWith('replace:')?conflicts.find(entry=>entry.id===choice.slice(8)):null;
+      await save('reviewMemoryCandidate',{id:item.id,expectedVersion:item.version,decision:'approve',title:String(data.get('title')).trim(),content:String(data.get('content')).trim(),type:data.get('type'),...(choice==='keepBoth'?{keepBoth:true}:{}),...(replace?{replaceMemoryId:replace.id,replaceExpectedVersion:replace.version}:{})},'Memoria confermata. Puoi annullare il salvataggio dai ricordi recenti.');
+    });
+  }
+  async function rejectCandidate(item) {
+    if(locked())return;saving=true;syncControls();
+    try{await save('reviewMemoryCandidate',{id:item.id,expectedVersion:item.version,decision:'reject'},'Proposta scartata. Il messaggio originale rimane nella chat.');}
+    catch(error){toast(error.message);if(error.status===409)await load({scopeId:currentScope});}
+    finally{saving=false;render();}
+  }
+  function undoMemory(action) {
+    const memory=snapshot.memories.find(item=>item.id===action.memoryId);if(!memory||memory.version!==action.memoryVersion)return;
+    openDialog('Annulla questo salvataggio',`<p class="knowledge-form-intro"><strong>${escape(memory.title)}</strong></p><p>${action.kind==='replace'?'Verrà ripristinata la memoria precedente.':'La memoria verrà rimossa.'} Il messaggio originale nella chat rimane conservato e questo salvataggio non verrà riproposto automaticamente.</p>`,'Annulla salvataggio',async()=>{await save('undoMemoryAction',{id:action.id},'Salvataggio annullato.');});
+  }
+
+  async function portabilityRequest(path,payload) {
+    const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Fuori-Studio':'local'},body:JSON.stringify(payload)});
+    let value;try{value=await response.json();}catch{throw Error('Lo studio non ha restituito un archivio valido. Riprova.');}
+    if(!response.ok){const error=Error(value.error||'Operazione archivio non riuscita.');error.status=response.status;throw error;}return value;
+  }
+  function portabilityWarnings(warnings=[]) {
+    return warnings.length?`<ul class="memory-transfer-warnings">${warnings.map(warning=>`<li>${escape(warning)}</li>`).join('')}</ul>`:'';
+  }
+  function openMemoryExport() {
+    const body=`<p class="knowledge-form-intro">Porta con te le memorie e le procedure degli ambiti scelti. L’esportazione non include conversazioni, credenziali o permessi di condivisione tra ambiti.</p><fieldset class="knowledge-sharing"><legend>Ambiti da esportare</legend><div class="knowledge-check-grid">${snapshot.scopes.map(scope=>`<label><input type="checkbox" name="scopeIds" value="${escape(scope.id)}"${scope.id===currentScope?' checked':''}><span>${escape(scope.name)}</span></label>`).join('')}</div></fieldset><div class="knowledge-field"><label for="memory-export-format">Formato dell’archivio</label><select id="memory-export-format" name="format"><option value="encrypted">Archivio cifrato · consigliato</option><option value="json">JSON · leggibile e reimportabile</option><option value="markdown">Markdown · da leggere o condividere</option></select></div><div class="memory-export-passwords knowledge-form-grid"><div class="knowledge-field"><label for="memory-export-passphrase">Passphrase</label><input id="memory-export-passphrase" name="passphrase" type="password" minlength="12" maxlength="1000" required autocomplete="off"></div><div class="knowledge-field"><label for="memory-export-repeat">Ripeti la passphrase</label><input id="memory-export-repeat" name="repeatPassphrase" type="password" minlength="12" maxlength="1000" required autocomplete="off"></div></div><p class="knowledge-hint memory-export-hint">Almeno 12 caratteri. Servirà per importare il file: conservala, lo studio non la salva.</p>`;
+    openDialog('Esporta il tuo archivio',body,'Crea e scarica archivio',async(data,form)=>{
+      const scopeIds=data.getAll('scopeIds'),format=data.get('format');
+      if(!scopeIds.length)throw Error('Seleziona almeno un ambito.');
+      if(format==='encrypted'&&data.get('passphrase')!==data.get('repeatPassphrase'))throw Error('Le due passphrase non coincidono.');
+      let result;
+      try{result=await portabilityRequest('/api/memory/export',{scopeIds,format,...(format==='encrypted'?{passphrase:data.get('passphrase')}:{})});}
+      finally{form.querySelectorAll('input[type="password"]').forEach(input=>input.value='');}
+      if(typeof result.content!=='string'||typeof result.filename!=='string')throw Error('Il file esportato non è valido.');
+      const blob=new Blob([result.content],{type:result.mime||'application/octet-stream'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download=result.filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+      openDialog('Archivio esportato',`<div class="memory-transfer-result"><span aria-hidden="true">↗</span><h3>${escape(result.filename)}</h3><p>${Number(result.counts?.memories)||0} memorie · ${Number(result.counts?.workflows)||0} procedure</p></div><p class="knowledge-form-intro">${format==='encrypted'?'Conserva il file e la passphrase in posti separati. Potrai importarlo in un altro studio.':format==='markdown'?'Il Markdown è un documento leggibile. Per importare in un altro studio scegli un archivio cifrato o JSON.':'Il JSON è in chiaro e può essere importato in un altro studio.'}</p>${portabilityWarnings(result.warnings)}`);
+      dialog.querySelector('[data-close]').textContent='Chiudi';return false;
+    });
+    dialog.querySelector('[name="format"]').addEventListener('change',event=>{
+      const encrypted=event.target.value==='encrypted';dialog.querySelector('.memory-export-passwords').hidden=!encrypted;
+      dialog.querySelectorAll('input[type="password"]').forEach(input=>{input.disabled=!encrypted;input.required=encrypted;input.value='';});
+      dialog.querySelector('.memory-export-hint').textContent=encrypted?'Almeno 12 caratteri. Servirà per importare il file: conservala, lo studio non la salva.':event.target.value==='markdown'?'Il Markdown è in chiaro e serve alla lettura. Non è un formato di importazione.':'Il JSON contiene i ricordi in chiaro. Può essere importato e modificato con altri strumenti.';
+    });
+  }
+  function showMemoryImportPreview(preview,targetScopeId) {
+    if(typeof preview.importId!=='string'||!Array.isArray(preview.items))throw Error('L’anteprima dell’archivio non è valida.');
+    const counts=preview.counts||{},eligible=preview.items.filter(item=>['proposed','draft'].includes(item.status)).length;
+    const statuses={proposed:'Nuova proposta',draft:'Nuova bozza',duplicate:'Già presente · saltata',conflict:'Conflitto · saltata'};
+    const body=`<p class="knowledge-form-intro">Destinazione: <strong>${escape(scopeName(targetScopeId))}</strong>. Le memorie saranno proposte da confermare e le procedure bozze. Nessuna voce esistente verrà sovrascritta.</p><div class="memory-transfer-counts"><span><b>${Number(counts.memories)||0}</b> memorie</span><span><b>${Number(counts.workflows)||0}</b> procedure</span><span><b>${Number(counts.duplicates)||0}</b> duplicati</span><span><b>${Number(counts.conflicts)||0}</b> conflitti</span></div><div class="memory-import-preview">${preview.items.map(item=>`<article><div><strong>${escape(item.title)}</strong><small>${item.kind==='workflow'?'Procedura':'Memoria'}</small></div><span class="memory-import-state${['duplicate','conflict'].includes(item.status)?' is-skipped':''}">${escape(statuses[item.status]||item.status)}</span></article>`).join('')||'<p class="knowledge-hint">Questo archivio non contiene voci da importare.</p>'}</div>${portabilityWarnings(preview.warnings)}<p class="knowledge-hint">L’anteprima scade ${escape(new Intl.DateTimeFormat('it-IT',{hour:'2-digit',minute:'2-digit'}).format(new Date(preview.expiresAt)))}. ${eligible?'Controlla le voci prima di procedere.':'Non ci sono nuove voci importabili.'}</p>`;
+    openDialog('Controlla prima di importare',body,eligible?'Importa come proposte e bozze':null,async()=>{
+      const result=await portabilityRequest('/api/memory/import',{importId:preview.importId});setSnapshot(result.snapshot);syncScopes();render();window.dispatchEvent(new CustomEvent('studio-workspace-changed'));
+      toast(`Importate ${Number(result.imported?.memories)||0} memorie e ${Number(result.imported?.workflows)||0} procedure in ${scopeName(targetScopeId)}. Rivedile prima di usarle.`);
+    });
+    if(!eligible)dialog.querySelector('[data-close]').textContent='Chiudi';
+  }
+  function openMemoryImport() {
+    const body=`<p class="knowledge-form-intro">Scegli un archivio cifrato di Fuori Studio o un file JSON esportato. Vedrai un’anteprima prima di modificare l’archivio. Il Markdown serve solo alla lettura.</p><div class="knowledge-field"><label for="memory-import-file">File dell’archivio</label><input id="memory-import-file" name="archive" type="file" accept=".fs-memory,.json,application/json" required></div><div class="knowledge-field"><label for="memory-import-scope">Ambito di destinazione</label><select id="memory-import-scope" name="targetScopeId">${scopeOptions(currentScope)}</select><p class="knowledge-hint">Le voci selezionate entreranno in questo ambito con nuovi identificativi.</p></div><div class="knowledge-field"><label for="memory-import-passphrase">Passphrase del file cifrato</label><input id="memory-import-passphrase" name="passphrase" type="password" maxlength="1000" autocomplete="off"><p class="knowledge-hint">Lascia vuoto per un archivio JSON in chiaro. La passphrase viene usata solo per questa importazione.</p></div>`;
+    openDialog('Importa un archivio',body,'Prepara anteprima',async(data,form)=>{
+      const file=data.get('archive');if(!(file instanceof File)||!file.size)throw Error('Seleziona un file non vuoto.');
+      if(file.size>12*1024*1024)throw Error('Questo file supera il limite di 12 MiB. Esporta un numero inferiore di ambiti.');
+      const targetScopeId=data.get('targetScopeId');let preview;
+      try{preview=await portabilityRequest('/api/memory/preview-import',{content:await file.text(),targetScopeId,...(data.get('passphrase')?{passphrase:data.get('passphrase')}:{})});}
+      finally{form.querySelector('[name="passphrase"]').value='';}
+      showMemoryImportPreview(preview,targetScopeId);return false;
+    });
   }
 
   function openMemory(item = {}) {
@@ -326,7 +426,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
     if (locked()) return;
     const memory = activeTab === 'memories';
     openDialog(memory ? 'Elimina questa memoria?' : 'Elimina questa procedura?', `<p class="knowledge-form-intro"><strong>${escape(item.title)}</strong></p><p>La voce e le sue revisioni saranno rimosse da <strong>${escape(scopeName(item.scopeId))}</strong>${item.sharedWith?.length || isShared(scopeFor(item.scopeId)) ? ' e dagli ambiti in cui è disponibile' : ''}. I messaggi originali in chat restano conservati.</p>`, 'Elimina definitivamente', async () => {
-      await save(memory ? 'deleteMemory' : 'deleteWorkflow', {id:item.id}, memory ? 'Memoria eliminata.' : 'Procedura eliminata.');
+      await save(memory ? 'deleteMemory' : 'deleteWorkflow', {id:item.id,expectedVersion:item.version}, memory ? 'Memoria eliminata.' : 'Procedura eliminata.');
     });
     dialog.querySelector('button[type="submit"]').classList.add('is-danger-button');
     dialog.querySelector('[data-close]').focus();
@@ -348,9 +448,16 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
 
   function captureMessage(message) {
     if (locked()) { toast('Attendi che lo studio sia pronto prima di salvare una memoria.'); return; }
-    const content = String(message.content ?? message.text ?? message.body ?? '').slice(0,8000);
-    if (!content.trim()) return;
-    openMemory({scopeId:currentScope,title:short(content.split('\n').find(line => line.trim()) || 'Dalla conversazione',100),content,status:'proposed',type:'fact',source:`Messaggio ${message.id || ''}`.trim(),sharedWith:[],agentIds:[]});
+    const content=String(message.content??message.text??message.body??'').slice(0,8000);if(!content.trim())return;
+    const title=short(content.split('\n').find(line=>line.trim())||'Dalla conversazione',100);
+    if(message.role!=='user'){openMemory({scopeId:currentScope,title,content,status:'proposed',type:'fact',source:`Messaggio del team ${message.id||''}`.trim(),sharedWith:[],agentIds:[]});return;}
+    const conversationId=getConversationId(),scopeId=currentScope;
+    if(!conversationId){toast('Ricarica la conversazione prima di ricordare questo messaggio.');return;}
+    openDialog('Ricorda questo messaggio',`<p class="knowledge-form-intro">Salva un ricordo confermato in <strong>${escape(scopeName(scopeId))}</strong>. La fonte rimane collegata al tuo messaggio originale.</p>${field('Titolo','title',title,{required:true,max:140})}<div class="knowledge-field"><label for="memory-explicit-type">Tipo</label><select id="memory-explicit-type" name="type">${Object.entries(typeNames).map(([value,label])=>`<option value="${value}">${escape(label)}</option>`).join('')}</select></div>${field('Contenuto da ricordare','content',content,{area:true,rows:6,required:true})}<p class="knowledge-hint">Puoi annullare questo salvataggio dai ricordi recenti. La cronologia della chat resta separata.</p>`,'Conferma e ricorda',async data=>{
+      const response=await fetch('/api/memory/remember',{method:'POST',headers:{'Content-Type':'application/json','X-Fuori-Studio':'local'},body:JSON.stringify({scopeId,conversationId,messageId:message.id,...(message.sourceVersion?{sourceVersion:message.sourceVersion}:{}),type:data.get('type'),title:String(data.get('title')).trim(),content:String(data.get('content')).trim()})});
+      const value=await response.json();if(!response.ok){const error=Error(value.error||'Non è stato possibile salvare il ricordo.');error.status=response.status;throw error;}
+      setSnapshot(value.snapshot);syncScopes();render();window.dispatchEvent(new CustomEvent('studio-workspace-changed'));toast('Ricordo salvato. Puoi annullarlo dai ricordi recenti.');
+    });
   }
 
   panel.addEventListener('click', event => {
@@ -359,6 +466,11 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
     const button = event.target.closest('[data-action]');
     if (!button || button.disabled) return;
     const action = button.dataset.action;
+    if(action==='memory-export'){openMemoryExport();return;}
+    if(action==='memory-import'){openMemoryImport();return;}
+    if(action==='memory-policy'){openMemoryPolicy();return;}
+    if(action==='candidate-review'||action==='candidate-reject'){const candidate=snapshot.memoryAssistant?.candidates?.find(item=>item.id===button.dataset.id);if(candidate){if(action==='candidate-review')openCandidate(candidate);else void rejectCandidate(candidate);}return;}
+    if(action==='memory-undo'){const actionRecord=snapshot.memoryAssistant?.actions?.find(item=>item.id===button.dataset.id);if(actionRecord)undoMemory(actionRecord);return;}
     if (action === 'retry') { load({scopeId:currentScope}); return; }
     if (action === 'new-scope') { openScope(); return; }
     if (action === 'new-entry') { activeTab === 'memories' ? openMemory() : openWorkflow(); return; }
@@ -381,5 +493,5 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, toast = () 
   $('#knowledge-scope').addEventListener('change', event => { changeScope(event.target.value); });
   chatScope.querySelector('select').addEventListener('change', event => { changeScope(event.target.value); });
 
-  return { load, setScope, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
+  return { load, setScope, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
 }

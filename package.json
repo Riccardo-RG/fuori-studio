@@ -1,20 +1,30 @@
 {
   "name": "fuori-studio",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "A local AI studio for owned products, scoped memory and reviewed deliverables.",
+  "description": "A private AI studio with scoped memory, encrypted storage and optional hybrid execution.",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
     "prepare": "node scripts/vendor.mjs",
-    "check": "node scripts/check.mjs",
-    "test": "node --test test/*.test.mjs"
+    "check": "node scripts/check.mjs && npm run typecheck",
+    "test": "node --test test/*.test.mjs",
+    "test:offline": "node scripts/test-offline.mjs",
+    "device": "node scripts/device.mjs",
+    "backup": "node scripts/backup.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "openid-client": "6.8.8",
+    "pdfjs-dist": "6.3.289",
     "three": "0.186.1"
   },
   "engines": {
     "node": ">=24 <25"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "typescript": "6.0.3"
   }
 }

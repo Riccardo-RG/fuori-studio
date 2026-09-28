@@ -2,13 +2,13 @@
 
 Fuori Studio can assign a different AI connection to each of its five roles. A role is a set of instructions and responsibilities; it is not a separate subscription. Several roles can share one connection, and the coordinator can use a different connection from the specialists.
 
-This implementation supports text conversations and structured coordination. It does **not** give API models a browser, shell, repository access, external tools, autonomous workflows, or the capabilities of Claude Code. Choosing Anthropic means using its Messages API, not launching Claude Code.
+The ordinary provider adapters support text conversations and structured coordination. Separate explicit workflows add local Codex repository editing and OpenAI API web research. Selecting a connection does not itself give an API model a browser, shell, repository access or the capabilities of Claude Code. The studio may start text tasks through separately enabled routines; only the explicit research action supplies the supported web-search tool. Choosing Anthropic means using its Messages API, not launching Claude Code.
 
 ## Supported connections
 
 | Connection type | Execution path | Authentication |
 | --- | --- | --- |
-| `codex` | Existing local Codex CLI | Existing local Codex login |
+| `codex` | Local CLI, or the explicitly selected paired computer | Existing Codex login on the execution computer |
 | `openrouter` | OpenRouter Chat Completions | An OpenRouter API key |
 | `openai` | OpenAI Responses API | An OpenAI API key |
 | `anthropic` | Anthropic Messages API | An Anthropic API key |
@@ -42,15 +42,15 @@ Changing a policy controls future dispatches. It cannot retract data already sen
 
 ## Credentials and local storage
 
-The private archive is `.local/providers.json`, or `providers.json` inside `FUORI_STUDIO_DATA_DIR` when that variable is set. `.local/` is ignored by Git and is not a public static directory. A custom data directory must also remain outside source control and static hosting.
+Provider records are encrypted inside `.local/studio.sqlite`, or the configured `FUORI_STUDIO_DATA_DIR`. The production singleton always uses the encrypted archive; standalone factory tests can inject an isolated legacy JSON backend. Existing `providers.json` is validated, encrypted with a migration backup, and retired after a durable database commit.
 
-Keys are stored on the server in a local JSON file with Unix mode `0600`, written atomically through a private temporary file. New directories use mode `0700`. Public snapshots contain only connection metadata, `configured`, and `hasKey`; they never return an `apiKey` property or a masked key fragment. Keys are sent only in provider authentication headers, never added to model prompts. Known stored credentials are rejected if accidentally included in an outgoing prompt, and literal credential echoes in returned text are redacted.
+Records use AES-256-GCM with a separate deployment key. Local mode can generate `archive.key` with mode `0600`; remote modes require an external master key. This is not an operating-system keychain and does not protect against another process with the same OS permissions or a compromised running server. Protect and back up the key separately. See [security guidance](SECURITY.md).
 
-This is **not encrypted storage or an operating-system keychain**. The local account running the app can read the file. Disk backups can retain deleted keys. Keep the local app private and protect the machine. A hosted or multi-user version needs its own authenticated users, encrypted secret management, account isolation, deployment controls, and authorization review before it can safely use this store. Do not publish the local data directory.
+Public snapshots contain metadata, `configured` and `hasKey`, never a key fragment. Keys are sent in provider authentication headers, never deliberately included in model prompts. Known credentials are rejected in outgoing prompts and literal credential echoes are redacted. Keys do not travel through knowledge sync or portable memory. Encrypted migration backups can retain older credentials; deleting an active connection is not cryptographic erasure of backups.
 
 API keys entered in the settings form necessarily pass from that browser to the local server. The app must not retain them in browser storage, public state, chat history, analytics, or logs. The server-side store cannot erase a credential that a user independently pasted into a chat message; remove such messages separately and rotate any exposed key.
 
-Provider HTTP error bodies, raw transport exceptions, and Codex runtime diagnostics are not returned to the browser. Errors use fixed, actionable messages. A malformed, oversized, incompatible, or symlinked archive fails closed and is not reset automatically. Restore a valid private backup or repair the file locally; do not paste its contents into chat. Use one server process per data directory: the mutation queue coordinates writes inside that process, not across several independently running servers.
+Provider HTTP error bodies, raw transport exceptions, and Codex runtime diagnostics are not returned to the browser. Errors use fixed, actionable messages. A malformed, oversized, incompatible, tampered or symlinked archive fails closed and is not reset automatically. Restore a valid private backup or repair the file locally; do not paste its contents into chat. Use one server process per data directory: the mutation queue coordinates writes inside that process, not across several independently running servers.
 
 ## Execution limits
 
@@ -67,7 +67,7 @@ Arbitrary base URLs, custom headers, local gateways, and proxy endpoints cannot 
 
 Every external call has a 180-second deadline, a 4,096-token output ceiling, a 120,000-character prompt ceiling including appended schema instructions, a 1 MiB response-body limit, and a 128,000-character extracted-text limit. The test request uses a 64-token output ceiling. A model may have stricter limits or count reasoning against the output allowance. Character limits are not token estimates or guarantees that every model's context window will fit.
 
-Cancellation aborts the local HTTP request; it does not guarantee that the remote provider stops computation immediately or refunds already processed tokens. External replies are buffered rather than streamed token by token. Only assistant text is returned. Reasoning-only or tool-only replies, malformed JSON envelopes, empty replies, and replies explicitly marked incomplete are rejected. No tool descriptions are sent and no model-requested tool is executed.
+Cancellation aborts the local HTTP request; it does not guarantee that the remote provider stops computation immediately or refunds already processed tokens. External replies are buffered rather than streamed token by token. Ordinary conversation calls return assistant text. Reasoning-only or tool-only replies, malformed JSON envelopes, empty replies, and replies explicitly marked incomplete are rejected. These calls supply no tools and execute no model-requested actions. Explicit research requests separately enable OpenAI web search and retain its returned citations and search metadata.
 
 For coordination, external requests receive the JSON schema as an additional prompt instruction. This is portable guidance, not provider-enforced strict structured output. The conversation layer must parse and validate the returned JSON before using its assignments. An incompatible model can fail coordination even when ordinary text generation works.
 
@@ -77,7 +77,7 @@ Returned usage is normalized to `{ inputTokens, outputTokens }` from the provide
 
 ## Server module contract
 
-`createProviderStore({ directory, fetchImpl })` creates a store; `providerStore` is the application's default instance. `fetchImpl` is an optional test injection and is not configurable through HTTP.
+`createProviderStore({ directory, fetchImpl, storage, codexRunner, codexAuthorization, executionPolicy })` creates a store; `providerStore` is the application's default instance. `fetchImpl` is an optional test injection and is not configurable through HTTP. The production `executionPolicy` delegates to the shared governor before inference dispatch; permissions remain a separate check.
 
 - `getSnapshot()` returns `{ version, connections, assignments, policies }` without credentials.
 - `mutate(action, payload)` performs one serialized change and returns the same redacted snapshot.
@@ -108,3 +108,16 @@ Protocol references checked during implementation:
 - [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)
 - [OpenRouter Chat Completions API](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion)
 - [DeepSeek Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)
+
+## Paired execution
+
+In authenticated remote modes, built-in Codex requires a selected paired computer. The worker initiates outbound HTTPS requests and keeps its own Codex login. Both the active scope and each source scope must be in the device grant as well as the provider allowlist. Execution-capable device credentials cannot read owner endpoints or synchronize knowledge without that separate capability.
+
+A queued job has a deadline; an active lease must be renewed. Revocation, cancellation, expiration and server restart reject late results. A lease is never reassigned automatically because inference may already have happened. A failed delivery can still have incurred provider usage. The UI reports device presence separately from identity and provider configuration.
+
+
+## Explicit web research
+
+`providerStore.research({scopeId,connectionId,query,domains?,signal?})` requires an authorized OpenAI API connection and a model supporting Responses `web_search`. There is no Codex or other-provider fallback. The request uses a maximum of three tool calls, optional allowed-domain filters, no stored response, and explicit source inclusion. A completed search event and usable URL citations are required before saving research; a generated URL alone is insufficient. Search can incur tool charges in addition to model usage, and the studio does not infer a monetary total from call counts.
+
+All actual provider calls, connection tests and repository editing calls pass through the execution governor. Permissions are checked independently. See [governance](GOVERNANCE.md), [repository work](REPOSITORY_WORK.md), and the official [web search API](https://developers.openai.com/api/docs/guides/tools-web-search).

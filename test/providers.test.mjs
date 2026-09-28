@@ -270,3 +270,19 @@ test('the server deadline aborts a stalled transport and returns a safe timeout'
   try { await assert.rejects(store.testConnection({ id }), { code: 'PROVIDER_TIMEOUT', status: 504 }); }
   finally { globalThis.setTimeout = original; }
 });
+
+test('web research requires explicit OpenAI authorization and preserves real citation metadata', async t => {
+  const requests=[];
+  const researchResponse={status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:[{url:'https://example.org/reference',title:'Reference'}]}},{type:'message',role:'assistant',content:[{type:'output_text',text:'Evidence with a source.',annotations:[{type:'url_citation',url:'https://example.org/reference',title:'Reference',start_index:0,end_index:8},{type:'url_citation',url:'javascript:alert(1)',title:'Invalid'}]}]}],usage:{input_tokens:12,output_tokens:8}};
+  const {store}=await fixture(t,async (url,options)=>{requests.push({url,body:JSON.parse(options.body)});return json(researchResponse);});
+  const id=await connect(store,'openai');
+  await assert.rejects(store.research({scopeId:'business',connectionId:id,query:'Current evidence'}),{code:'PROVIDER_NOT_ALLOWED'});
+  assert.equal(requests.length,0);
+  await enable(store,id,'radar');
+  const result=await store.research({scopeId:'business',connectionId:id,query:'Current evidence',domains:['example.org']});
+  assert.equal(requests[0].body.tools[0].type,'web_search');assert.deepEqual(requests[0].body.tools[0].filters.allowed_domains,['example.org']);assert.equal(requests[0].body.max_tool_calls,3);
+  assert.equal(result.citations.length,1);assert.equal(result.citations[0].url,'https://example.org/reference');assert.equal(result.sources.length,1);assert.equal(result.searchCalls,1);
+  researchResponse.output=researchResponse.output.filter(item=>item.type!=='web_search_call');
+  await assert.rejects(store.research({scopeId:'business',connectionId:id,query:'No actual search'}),{code:'PROVIDER_RESEARCH_NO_SOURCES'});
+  await assert.rejects(store.research({scopeId:'business',connectionId:'codex',query:'No fallback'}),{code:'PROVIDER_RESEARCH_UNSUPPORTED'});
+});

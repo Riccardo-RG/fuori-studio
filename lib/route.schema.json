@@ -1,1 +1,93 @@
-{"type":"object","additionalProperties":false,"properties":{"message":{"type":"string"},"projectId":{"type":"string","enum":["portfolio","builder","avatar","necklace","horeca","group","roblox","tourism","trainer"]},"needsInput":{"type":"boolean"},"assignments":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"properties":{"agentId":{"type":"string","enum":["radar","forge","muse","growth"]},"task":{"type":"string"}},"required":["agentId","task"]}}},"required":["message","projectId","needsInput","assignments"]}
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string",
+      "enum": [
+        "portfolio",
+        "builder",
+        "avatar",
+        "necklace",
+        "horeca",
+        "group",
+        "roblox",
+        "tourism",
+        "trainer"
+      ]
+    },
+    "needsInput": {
+      "type": "boolean"
+    },
+    "assignments": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "enum": [
+              "radar",
+              "forge",
+              "muse",
+              "growth"
+            ]
+          },
+          "task": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId",
+          "task"
+        ]
+      }
+    },
+    "memoryCandidates": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "fact",
+              "preference",
+              "decision",
+              "pattern"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "content",
+          "quote"
+        ]
+      }
+    }
+  },
+  "required": [
+    "message",
+    "projectId",
+    "needsInput",
+    "assignments",
+    "memoryCandidates"
+  ]
+}

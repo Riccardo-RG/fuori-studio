@@ -21,13 +21,17 @@ Anthill, forest, beach, and mountain are graphic themes. Animals are decorative.
 
 | Capability | Current behavior | Boundary |
 | --- | --- | --- |
-| Scoped context and hybrid memory | Separate conversations, explicit confirmed notes, provenance, version history, selected procedures, and bounded context retrieval | No semantic/vector search, document ingestion, or automatic promotion of generated statements into facts |
+| Scoped context and hybrid memory | Separate conversations, confirmed notes, assisted capture, provenance, version history and bounded retrieval | No semantic/vector search or automatic promotion of generated statements into facts |
 | Owned and client projects | Projects group work within an explicit scope; owned products are the default priority | Parent scopes do not implicitly grant access to their contents |
-| Durable assignments | Tasks preserve a brief, responsible role, ordered steps, status, outputs, and execution metadata | Execution currently produces text; it does not edit repositories, browse the web, or publish externally |
+| Durable assignments | Tasks preserve a brief, responsible role, ordered steps, status, outputs and execution metadata; reviewed plans add dependencies | Task steps produce text; code editing and live research have separate explicit workflows |
 | Reviewable deliveries | Versioned text artifacts can be approved or returned for changes | A model cannot approve its own delivery |
 | Recovery | Interrupted work is recoverable; completed steps can be preserved while incomplete work is retried, subject to current context permissions | This is not a guarantee of exactly-once effects in arbitrary external systems |
 | AI connections | Local Codex plus OpenAI, Anthropic, DeepSeek, and OpenRouter API connections, assigned per role | External services need the user's valid API credentials and explicit scope policies; no silent fallback |
-| Local routines | Enabled interval routines create queued tasks while the local server is running | They do not silently start model calls, supply cloud hosting, or keep a stopped machine running |
+| Routines and limits | Enabled routines queue tasks; explicit autonomy can start new eligible occurrences within durable daily call/run limits | No automatic retries, monetary billing guarantee or wake of a stopped server |
+| Repository work | Isolated committed baseline, configured checks, optional AI review and a captured patch for human approval | Requires compatible local Codex sandbox; no merge or publication, and the inspected macOS host fails preflight |
+| Sources and research | Scoped document/PDF text, public URLs/GitHub snapshots and allowed folders; explicit OpenAI web search with citations | Read-only snapshots; no private document accounts, browser automation or OCR |
+| Identity and storage | Exact-owner OIDC, encrypted SQLite records, scoped paired devices and selective knowledge sync | One owner and one server process; external deployment setup remains necessary |
+| Outcomes | Human review decisions, execution cycles, reported usage and separately labeled user feedback | No invented costs or estimated savings |
 | Reusable learning | An approved artifact can inform a proposed note for user review | Proposed notes remain excluded from confirmed context until explicitly accepted |
 
 See [Product direction](../PRODUCT.md), [Provider connections](PROVIDERS.md), and [Architecture](ARCHITECTURE.md) for the implementation and deployment boundaries. Neither this feature set nor the competitor review demonstrates that a mixed-provider team reasons better than one well-configured agent.
@@ -135,7 +139,7 @@ These systems were reviewed for specific patterns, not ranked against the framew
 | Reference | Documented pattern | Potential application to Fuori Studio |
 | --- | --- | --- |
 | [Relevance AI Workforces](https://relevanceai.com/docs/get-started/core-concepts/workforces) | Specialized agents, mandatory or agent-chosen handoffs, conditional paths, and inspection of inputs/outputs | Make reusable product processes explicit and inspectable; add conditions only when a real brief needs them |
-| [Conductor](https://www.conductor.build/docs/concepts/parallel-agents) | Separate workspaces for independently deliverable changes; shared workspaces for agents collaborating on one branch | Future repository execution with clear review paths and deliberate sharing boundaries |
+| [Conductor](https://www.conductor.build/docs/concepts/parallel-agents) | Separate workspaces for independently deliverable changes; shared workspaces for agents collaborating on one branch | Repository isolation with clear review paths and deliberate sharing boundaries |
 | [Superset](https://docs.superset.sh/) | Parallel coding work, isolated Git worktrees, multiple agent runtimes, and integrated diff/review actions | Evaluate how execution and review can fit into one daily workspace |
 | [Gas Town](https://github.com/gastownhall/gastown) | Persistent work identities and records, coordination, handoffs, and recovery around coding agents | Learn from work surviving session replacement; avoid adopting organizational complexity without need |
 | [Dify](https://www.dify.ai/workflows) | Visual workflows combining model calls, retrieval, tools, branches, triggers, and human review | Future integrations and repeatable processes, with visible execution and human checkpoints |
@@ -165,10 +169,12 @@ Do not equate token accounting with a monetary hard stop, a debug trace with an 
 These are product judgments drawn from the review, not measured competitor advantages:
 
 1. **Validate the owned-product loop first.** Run real briefs through scoped context, tasks, steps, artifacts, revision, and approval. Measure useful deliveries, correction effort, and coordination time before increasing agent count.
-2. **Extend execution with explicit capabilities.** Read-only research, document ingestion, and isolated repository work are future features. Each needs data boundaries, provenance, and tested action permissions. Approving a text artifact must not silently authorize publication or a repository write.
+2. **Extend execution with explicit capabilities.** Read-only research, document ingestion, and isolated repository work now have explicit bounded workflows; authenticated write connectors remain a further gate. Each needs data boundaries, provenance, and tested action permissions. Approving a text artifact must not silently authorize publication or a repository write.
 3. **Separate role identity from model choice.** Keep project records and permissions stable while changing a role's connection. Compare actual briefs before claiming a cheaper, faster, or more capable model assignment.
-4. **Grow reliability before unattended work.** Current routines queue tasks. External event triggers or automatic execution should follow proven retry, idempotency, cost, and notification policies, rather than being implied by a scheduler.
-5. **Treat deployment as a new boundary.** Local private JSON stores and one-user controls do not supply multi-user identity, tenant isolation, encrypted secret management, or cloud execution. Those require separate implementation and verification.
+4. **Bound unattended work.** Routines queue by default; optional autonomy uses durable occurrence claims and daily call/run limits. Evaluate real outcomes before broadening it to external event triggers, retries or notifications.
+5. **Keep deployment boundaries explicit.** Encrypted SQLite, exact-owner OIDC and scoped paired execution are implemented. They do not supply multi-tenant isolation or an already configured online service; deployment, account access and live runtime compatibility still require verification.
 6. **Evaluate composition only against a concrete need.** Fuori Studio can continue using direct adapters or later integrate an orchestration platform such as Paperclip. A full task with failure, retry, review, and delivery is a better evaluation than a feature-list comparison.
 
 The proposed advantage is less manual coordination around useful product work. It must be demonstrated through completed, reviewable outcomes; neither a 3D office nor a list of connected model providers establishes it on its own.
+
+For the subsequent review of platform authentication, local/online access and automatic memory, see [Hybrid access and assisted memory](HYBRID_IDENTITY_AND_MEMORY.md). That document separates the delivered core from broader design recommendations and unverified real-world outcomes.

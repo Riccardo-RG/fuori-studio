@@ -2,15 +2,17 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f4f5ed">
+  <meta name="theme-color" content="#f2f0e9">
+  <script src="theme-init.js"></script>
   <title>Fuori Studio — Il mondo di Riccardo</title>
   <meta name="description" content="Il tuo team AI nel cuore di un formicaio laborioso. Esplora un grande mondo 3D tra formicaio, bosco, spiaggia e montagna.">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="knowledge.css"><link rel="stylesheet" href="operations.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="knowledge.css"><link rel="stylesheet" href="operations.css"><link rel="stylesheet" href="studio.css"><link rel="stylesheet" href="access.css"><link rel="stylesheet" href="repositories.css"><link rel="stylesheet" href="plans.css"><link rel="stylesheet" href="governance.css"><link rel="stylesheet" href="sources.css">
 </head>
-<body data-landscape="anthill">
+<body data-landscape="anthill" class="access-pending">
+<section id="access-gate" class="access-gate" aria-label="Accesso allo studio"><div class="access-gate-card"><img src="favicon.svg" alt="" width="48" height="48"><h1>Apriamo il tuo studio.</h1><p role="status">Verifica dell’accesso in corso…</p></div></section>
 <div class="app-shell">
   <div class="app-content">
-    <header class="topbar"><a class="brand" href="#main"><img src="favicon.svg" alt=""><span>fuori<span class="brand-light">studio</span><small>LO STUDIO DI RICCARDO</small></span></a><nav class="top-nav" aria-label="Navigazione principale"><a href="#office-title">Lo studio</a><a href="#team-title">Il team</a><a href="#operations-title">I progetti</a></nav><div class="topbar-right"><span class="demo-badge" id="provider-badge">Codex · connessione</span><span class="user-avatar" aria-label="Riccardo">R</span></div></header>
+    <header class="topbar"><a class="brand" href="#main"><img src="favicon.svg" alt=""><span>fuori<span class="brand-light">studio</span><small>LO STUDIO DI RICCARDO</small></span></a><nav class="top-nav" aria-label="Navigazione principale"><a href="#office-title">Lo studio</a><a href="#team-title">Il team</a><a href="#operations-title">I progetti</a></nav><div class="topbar-right"><span class="demo-badge" id="provider-badge">Codex · connessione</span><button id="access-open" class="account-button" type="button" aria-label="Accesso e dispositivi"><span class="account-mark" aria-hidden="true">⌂</span><span data-access-name>Il mio studio</span></button></div></header>
     <main id="main">
       <section class="page-heading"><div><div class="eyebrow">UN PO’ DI ARIA. SPAZIO ALLE TUE IDEE.</div><h1>Oggi si lavora <em>fuori.</em></h1><p>I tuoi prodotti, le decisioni, il prossimo passo. Uno studio che conserva il lavoro.</p></div><button class="button primary" id="new-mission"><span aria-hidden="true">＋</span> Parla con il team</button></section>
       <div class="workspace">
@@ -18,8 +20,8 @@
           <div class="panel-top office-toolbar"><div class="panel-title"><span class="location-icon" aria-hidden="true">⌘</span><h2 id="office-title">Lo studio nel formicaio</h2></div><div class="landscape-picker" role="group" aria-label="Scegli il paesaggio"><button class="landscape-button" data-landscape="anthill" aria-pressed="true">Formicaio</button><button class="landscape-button" data-landscape="forest" aria-pressed="false">Bosco</button><button class="landscape-button" data-landscape="beach" aria-pressed="false">Spiaggia</button><button class="landscape-button" data-landscape="mountain" aria-pressed="false">Montagna</button></div></div>
           <div class="office-world" id="office-world">
             <div class="scene-backdrop"></div>
-            <div class="office-illustration" id="office-illustration" role="img" aria-label="Un team al centro di un grande formicaio 3D, circondato da formiche laboriose" aria-describedby="camera-hint"></div>
-            <div class="scene-caption"><span id="landscape-label">FORMICAIO · STUDIO 01</span><span>Piccoli passi. Un grande mondo.</span></div>
+            <div class="office-illustration" id="office-illustration" role="region" aria-label="Un team al centro di un grande formicaio 3D, circondato da formiche laboriose" aria-describedby="camera-hint"></div>
+            <div class="scene-caption"><span id="landscape-label">FORMICAIO · STUDIO 01</span><span>Il tuo mondo, al lavoro.</span></div>
             <div class="office-message" id="office-message"><span aria-hidden="true">✦</span> Il team al centro. Un mondo da esplorare.</div>
             <div class="camera-controls" role="group" aria-label="Controlli della vista"><button id="zoom-out" class="icon-button camera-zoom" aria-label="Allontana la vista" title="Allontana la vista">−</button><button id="zoom-in" class="icon-button camera-zoom" aria-label="Avvicina la vista" title="Avvicina la vista">＋</button><button id="world-overview" class="icon-button camera-overview" aria-pressed="false" aria-label="Mostra il panorama completo" title="Esplora tutto il paesaggio">⌗ <span>Panorama</span></button><button id="reset-camera" class="icon-button camera-reset" aria-label="Torna alla vista del team" title="Torna alla vista del team (R o Home)">↺ <span>Torna al team</span></button></div><button id="focus-toggle" class="icon-button scene-focus" aria-label="Riduci le animazioni" aria-pressed="false" title="Riduci le animazioni">◌ <span>Quiet mode</span></button>
           </div>
@@ -43,5 +45,5 @@
 </div>
 <dialog id="detail-dialog" aria-labelledby="dialog-title"><div class="dialog-top"><span id="dialog-eyebrow" class="eyebrow">IL TUO TEAM</span><button id="close-dialog" class="icon-button" aria-label="Chiudi finestra">✕</button></div><div id="dialog-body"></div></dialog>
 <div id="toast" class="toast" role="status" hidden></div>
-<script type="module" src="app.js"></script>
+<script type="module" src="access.js"></script>
 </body></html>

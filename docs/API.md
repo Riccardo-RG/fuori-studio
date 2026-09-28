@@ -1,15 +1,17 @@
-# Local HTTP API
+# HTTP API
 
-Base URL: `http://127.0.0.1:4386` (or the configured `PORT`). This is a local single-user API, not a public authenticated service.
+Base URL: `http://127.0.0.1:4386` (or the configured `PORT`). Local mode is single-user and loopback-only. In hybrid/online modes use the configured HTTPS origin; every owner endpoint below requires the authenticated owner session.
 
-All writes use `POST`, `Content-Type: application/json` and `X-Fuori-Studio: local`. The server rejects foreign hosts/origins and browser cross-site requests. JSON bodies are limited to 120,000 bytes. Errors return `{ "error": "..." }` with an appropriate HTTP status. Corrupt stores fail closed. Concurrent configuration changes return `409`; callers should refresh rather than blindly retry a paid operation.
+Owner writes use `POST` and `Content-Type: application/json`. Local mode requires `X-Fuori-Studio: local`; remote mode requires the session cookie, exact `Origin` and `X-CSRF-Token` from `/api/session`. The server rejects foreign hosts/origins and browser cross-site requests. Normal JSON bodies are limited to 120,000 bytes; portable import preview allows 16 MiB, device sync 8 MiB and other worker requests 600,000 bytes. Errors return `{ "error": "..." }` with an appropriate HTTP status. Corrupt stores fail closed. Concurrent configuration changes return `409`; callers should refresh rather than blindly retry a paid operation.
 
 ## Reads
 
 | Endpoint | Response |
 | --- | --- |
 | `GET /api/studio` | Selected conversation, messages, `scopeId`, `workflowId`, `busy`, and leader connection status |
-| `GET /api/workspace` | `{version, scopes, memories, workflows}` |
+| `GET /api/workspace` | `{version, scopes, memories, workflows, memoryAssistant, syncTombstones, ...}` |
+| `GET /api/session` | Public login status; authenticated responses include the page CSRF token |
+| `GET /api/access` | Owner-only mode, redacted devices, selected target, storage and sync status |
 | `GET /api/operations` | `{version, projects, tasks, routines, scheduler}` |
 | `GET /api/providers` | Redacted `{version, connections, assignments, policies}`; never API keys |
 
@@ -17,7 +19,7 @@ A configured provider is not necessarily authenticated, funded or reachable. Cod
 
 ## Memory and conversations
 
-`POST /api/workspace` accepts `{action, payload}`. Actions are `createScope`, `saveMemory`, `deleteMemory`, `saveWorkflow`, `deleteWorkflow`; the response is a workspace snapshot. Existing-record saves can include `expectedVersion` for optimistic conflict detection (the UI supplies it).
+`POST /api/workspace` accepts `{action, payload}`. Actions are `createScope`, `saveMemory`, `deleteMemory`, `saveWorkflow`, `deleteWorkflow`, `setMemoryPolicy`, `reviewMemoryCandidate`, `undoMemoryAction`; the response is a workspace snapshot. Existing-record saves can include `expectedVersion` for optimistic conflict detection (the UI supplies it).
 
 ```json
 {
@@ -37,7 +39,7 @@ A configured provider is not necessarily authenticated, funded or reachable. Cod
 
 `POST /api/conversation/scope {scopeId}` selects an existing scope. `POST /api/conversation/new {}` archives and resets the selected conversation.
 
-`POST /api/chat {message, scopeId, workflowId?}` returns Server-Sent Events. Events include `message`, `status`, `context`, `notice`, `error`, and `done`; each event is JSON in a `data:` frame. Scope and procedure are checked before streaming begins. Chat disconnect cancels its active request. A chat message does not create a persistent assignment.
+`POST /api/chat {message, scopeId, workflowId?}` returns Server-Sent Events. Events include `message`, `status`, `context`, `memory`, `notice`, `error`, and `done`; each event is JSON in a `data:` frame. Scope and procedure are checked before streaming begins. Chat disconnect cancels its active request. A chat message does not create a persistent assignment.
 
 ## Projects and assignments
 
@@ -78,13 +80,13 @@ Each run has an internal execution token. Late results from a cancelled or previ
 
 ## Routines
 
-Intervals are clamped to 1–720 hours. New routines default to disabled. Dates are ISO timestamps; browser forms convert local times to ISO. An enabled due routine atomically creates a **queued** task and moves the due time strictly into the future. Missed intervals coalesce. Scheduling runs every 30 seconds while the local server runs; it never automatically calls a paid AI provider. Unavailable procedures leave the routine due and expose a scheduler error.
+Intervals are clamped to 1–720 hours. New routines default to disabled. Dates are ISO timestamps; browser forms convert local times to ISO. An enabled due routine atomically creates a **queued** task and moves the due time strictly into the future. Missed intervals coalesce. Scheduling runs every 30 seconds while the server runs. Tasks stay queued by default. Explicit governance opt-in can start enabled routine occurrences created after that opt-in, subject to daily call/run limits and scope/provider checks. Claimed occurrences are not automatically retried, and failures require manual attention. Unavailable procedures leave the routine due and expose a scheduler error.
 
 ## AI connections
 
 `POST /api/providers {action, payload}` supports `saveConnection`, `deleteConnection`, `assignAgent`, and `setScopePolicy`. See [the provider contract](PROVIDERS.md#server-module-contract) for exact fields. `POST /api/providers/test {id}` explicitly performs a tiny potentially billable request with no project context.
 
-Provider configuration and memory writes are blocked while chat/task execution uses their snapshot. Every model call is checked against the active scope and the source scopes of its context. No automatic paid retry, destination fallback, arbitrary URL or user-defined header is accepted.
+Provider configuration and memory writes are blocked while chat, task or repository execution uses their snapshot. Every model call is checked against the active scope and the source scopes of its context. No automatic paid retry, destination fallback, arbitrary URL or user-defined header is accepted.
 
 ## Data record summaries
 
@@ -94,3 +96,91 @@ Provider configuration and memory writes are blocked while chat/task execution u
 - Routine: project, task template, cadence, next due time, enablement and version.
 
 The UI must render record content as text, not executable HTML. A reference records supplied context; it is not a verified citation.
+
+## Identity and paired devices
+
+`GET /auth/login` starts OIDC. `GET /auth/callback` accepts only the cookie-bound single-use authorization response. `GET /auth/sessions` returns the owner's active sessions. `POST /auth/logout {}` revokes the current session; `POST /auth/sessions/revoke` accepts exactly one of `{id}`, `{all:true}`, `{others:true}`. These mutations require normal remote CSRF protection. The immutable configured issuer/subject identifies the sole owner.
+
+`POST /api/devices {action,payload}` accepts:
+
+- `pair`: `{name,scopeIds,capabilities:["execute","sync"]}` (one or both), returns a one-time `{code,expiresAt,serverUrl}`. Available only in authenticated remote modes.
+- `target`: `{id:"local"|deviceId}`. Remote mode requires a paired device for Codex; local execution is local-mode only.
+- `revoke`: `{id}`. Stops future claims and rejects active late results without returning device credentials.
+
+Workers use outbound HTTPS and `Authorization: Bearer <device-token>`, not owner cookies. `POST /api/device/pair {code}` consumes a pairing code and returns the sole copy of a scoped token. `/api/device/claim {}` returns one addressed job or `job:null`; `/heartbeat {id,lease}` renews its lease, `/result {id,lease,text|error}` completes it. `/disconnect {}` revokes that calling device and returns only `{ok:true}`. Device tokens cannot read owner APIs. Inputs and outputs are bounded; stale/replayed results return `409`.
+
+## Assisted and portable memory
+
+Policy mutation: `setMemoryPolicy {scopeId,expectedVersion?,mode:"manual"|"assisted"|"automatic",learningEnabled,automaticTypes:["preference"|"pattern"]}`. `reviewMemoryCandidate` accepts the candidate ID/current version, approve/reject decision, optional edited wording, and explicit conflict choice. `undoMemoryAction {id}` cannot overwrite a later version. Source-linked candidates arrive alongside an already authorized leader response; no extra extraction call is made.
+
+`POST /api/memory/remember {scopeId,conversationId,messageId,sourceVersion?,title?,content?,type?}` looks up the stored user source and returns `{snapshot,memory,actionId}`. A posted source identifier never grants access to another conversation. Model candidate ingestion is an internal method, not an HTTP command.
+
+Portable routes are owner-only and require an idle studio:
+
+| Endpoint | Payload | Result |
+| --- | --- | --- |
+| `/api/memory/export` | `{scopeIds,format:"encrypted"|"json"|"markdown",passphrase?}` | `{filename,mime,content,counts,warnings}` for browser download |
+| `/api/memory/preview-import` | `{content,passphrase?,targetScopeId}` | Private expiring `importId`, counts and preview items |
+| `/api/memory/import` | `{importId}` | Workspace snapshot, imported/skipped counts; retry-safe receipt |
+
+Encrypted exports need a passphrase of at least 12 characters. JSON/Markdown are plaintext. Only confirmed notes and ready procedures are exported; provider credentials, history, grants and revision archives are excluded. Import creates new proposed notes/draft procedures and never overwrites an existing record. See [portability](PORTABILITY.md).
+
+## Knowledge synchronization
+
+`POST /api/sync {action,payload}` supports `connect {url,code}`, `disconnect {}`, `configure {scopeIds}`, `run {}` and `resolve {id,expectedVersion,choice:"local"|"remote"}`. Connect requires an HTTPS origin and a code with sync capability. No scopes are enabled implicitly. Run is explicit; conflicts keep both texts and need review. Resolve updates the local choice; a following run reconciles it remotely without overwriting any intervening remote edit.
+
+`POST /api/device/sync` is the scoped worker protocol. It exchanges current records, baseline hashes, selected scope metadata and tombstones. Revision history, sharing grants, memory policy and credentials are never replicated. A tombstoned record cannot reappear under the same ID; retain useful text through a new reviewed record instead. Corruption or incompatible protocols fail closed rather than partially importing unvalidated data.
+
+## Repository work
+
+`GET /api/repositories` returns local-only capability metadata, registered repositories and lightweight runs. Local mode includes a suggested source path. Patch text and checkout paths are not embedded in run lists.
+
+`POST /api/repositories {action,payload}` accepts:
+
+```text
+register       { projectId, scopeId, path, checks: [{label, program, args}] }
+create         { repositoryId, title, brief }
+start          { id, expectedVersion }
+pause          { id, expectedVersion }
+approve        { id, expectedVersion }
+requestChanges { id, expectedVersion, feedback }
+proposeMemory  { id, expectedVersion?, title, content, type: "decision" | "pattern" }
+```
+
+Start durably claims one queued run and returns before execution completes. Poll the GET endpoint for stage/check/review updates. Revision creates a new queued run with a parent link and preserves the earlier artifact. Approval checks the immutable patch hash and actual configured check results. It never publishes or merges. The memory response includes the workspace snapshot alongside the repository snapshot. `GET /api/repositories/patch?id=…` returns an authenticated text attachment; missing, corrupted or unavailable patches fail closed.
+
+## Dependency plans
+
+`POST /api/plans {action:"draft",payload:{projectId,brief}}` makes one explicit coordinator call and returns a validated proposal with `id`, `title`, `nodes`, project ID and a fifteen-minute expiry. Nodes contain a key, title, brief, responsible agent and ordered `dependsOn` keys. A proposal is not a task and does not authorize execution.
+
+`POST /api/plans {action:"commit",payload:{id}}` atomically creates queued tasks from that exact proposal. It makes no AI call. Cycles, missing references, duplicate keys and invalid roles are rejected. Created tasks carry `planId`, `planTitle`, predecessor task IDs and inherited source evidence. Starting a dependent task requires each predecessor's latest delivery to be approved. Each original memory and document evidence set is revalidated before merging context references or dispatching a call. Fresh retrieval cannot conceal an older source version used to draft a task or predecessor result.
+
+At most twenty proposals can await review; the limit is checked before a coordinator call. Uncommitted proposals expire or are lost on server restart. Committing claims the proposal once, preventing concurrent duplicate graphs; failed preflight restores it until expiry. Committed tasks persist in the operations archive.
+
+## Limits and outcomes
+
+`GET /api/governance` returns settings, UTC period/reset, daily allowances, recorded usage, user feedback and `metrics` derived from actual task/repository records.
+
+`POST /api/governance {action:"configure",payload:{expectedVersion,dailyCallLimit,maxCallSeconds,autonomousRoutines,maxAutonomousRunsPerDay}}` saves limits while idle. Enabling autonomy establishes a server-side opt-in timestamp. Only enabled routine tasks created after that timestamp can start automatically.
+
+`POST /api/governance {action:"saveOutcome",payload:{taskId|runId,helpful,minutesSaved?,note?,expectedVersion?}}` records feedback for an existing approved delivery. Exactly one entity ID is required. Missing minutes remain unknown, not zero. Both mutations return a refreshed governance snapshot.
+
+## Sources and read-only connectors
+
+`GET /api/sources?scopeId=…` lists scoped source metadata, connector capabilities and import limits. `GET /api/sources/detail?scopeId=…&id=…` returns extracted segments and citation URLs; it does not return original PDF bytes or local path credentials.
+
+`POST /api/sources {action,payload}` supports:
+
+```text
+importText     { scopeId, title, text, filename? }
+importDocument { scopeId, title, filename, mimeType, dataBase64 }
+importUrl      { scopeId, url, title? }
+importFolder   { scopeId, path }
+refresh        { id, scopeId, version }
+remove         { id, scopeId, version }
+searchWeb      { scopeId, connectionId, query, domains?, consent: true }
+```
+
+Imports and refresh return `{source,segments,citationSources}`; research adds execution metadata. Folder import reports imported metadata and skipped entries. Removal returns the removed ID. Read the source list again after mutations. Source actions require an idle studio; research and URL/PDF work receive disconnect cancellation.
+
+PDF/text uploads are bounded to 8 MiB input, 600,000 extracted characters and 200 PDF pages. The JSON HTTP ceiling is 12 MiB to accommodate base64. Text-based PDF extraction does not perform OCR. Local folder roots are the app directory, explicitly registered repositories and optional `FUORI_STUDIO_SOURCE_ROOTS`; remote mode cannot use local folder import. Connectors are read-only. URL retrieval permits bounded public HTTPS requests with DNS/redirect checks, not authenticated browsing or arbitrary endpoints.
