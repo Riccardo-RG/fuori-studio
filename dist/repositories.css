@@ -78,3 +78,24 @@
 
 .repo-feedback-title { margin-top: 16px !important; }
 @media(max-width:700px) { .repo-help[open] { flex-basis: 100%; }.repo-help > p { position: static; width: auto; margin-top: 9px; box-shadow: none; } }
+
+.repo-target { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; max-width: 100%; border: 1px solid var(--edge); border-radius: 6px; font-size: 10px; line-height: 1.6; color: var(--muted); background: var(--surface-soft); overflow-wrap: anywhere; }
+.repo-target i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.repo-target.is-online i { background: var(--success-ink); }
+.repo-target.is-offline { border-style: dashed; }
+.repo-card-heading > .repo-target { flex-shrink: 0; max-width: 45%; }
+.repo-card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.repo-worker-setup { padding: 24px; background: var(--surface); border: 1px dashed var(--edge-strong); border-radius: 12px; }
+.repo-worker-setup h4 { font-size: 17px; line-height: 1.6; font-weight: 600; letter-spacing: -.25px; }
+.repo-worker-setup ol { margin: 15px 0; padding-left: 19px; color: var(--muted); font-size: 12px; line-height: 1.9; }
+.repo-worker-setup li + li { margin-top: 7px; }
+.repo-worker-setup .ops-hint { margin: 14px 0 0; }
+.repo-location-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.repo-location-fields[hidden], #repo-registration-setup[hidden] { display: none; }
+.repo-authorized-details { padding: 18px; margin-bottom: 16px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface-soft); }
+.repo-target-note { margin: 0 0 18px; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.repo-target-note.is-offline { padding: 12px 15px; border-left: 2px solid var(--edge-strong); background: var(--surface-soft); }
+.repo-run-target { margin: -5px 0 18px; }
+.repo-run-target .ops-hint { margin-top: 9px; }
+#repo-registration-setup { margin-bottom: 18px; }
+@media(max-width:700px) { .repo-card-heading { flex-wrap: wrap; gap: 4px; }.repo-card-heading > .repo-target { max-width: 100%; margin-bottom: 9px; }.repo-worker-setup { padding: 18px; }.repo-worker-setup .repo-patch-actions { display: grid; }.repo-authorized-details { padding: 13px; }.repo-card-actions { width: 100%; }.repo-card-actions .ops-button { flex: 1 1 auto; } }

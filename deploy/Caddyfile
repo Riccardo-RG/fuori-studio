@@ -1,0 +1,12 @@
+{
+	admin off
+}
+
+{$STUDIO_DOMAIN} {
+	request_body {
+		max_size 20MB
+	}
+	# Retain the public Host: the application verifies its configured origin.
+	reverse_proxy studio:4386
+	encode zstd gzip
+}

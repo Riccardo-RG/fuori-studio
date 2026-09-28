@@ -41,6 +41,10 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Portability | Scoped Markdown/JSON export, passphrase-encrypted packages, previewed imports as proposals |
 | Identity | Optional OIDC owner login, protected sessions, CSRF checks and immediate revocation |
 | Hybrid execution | Short-lived pairing codes, scoped devices, local Codex login, leases and stale-result rejection |
+| Remote repository work | Separate repository grants, worker-local aliases/check policies, durable receipt recovery without rerunning edits |
+| Deployment and recovery | Guided readiness, secret-file configuration, hosted container recipe, verified encrypted backups and new-directory restore |
+| Authenticated GitHub | Scoped private-file imports, exact approved patch previews, isolated branches and explicitly published draft PRs |
+| Memory evaluation | Owner-labeled retrieval cases, scope exclusions, missing facts, stale labels and versioned usefulness feedback |
 | Knowledge sync | Opt-in scope replication, three-way conflicts and durable deletion markers; no credential transfer |
 | Storage | SQLite transactions with authenticated encrypted records and encrypted migration backups |
 | Procedures | Versioned instructions; selectable in chat or executed as task steps |
@@ -74,6 +78,8 @@ Selected context is sent to the assigned AI provider. Local storage does not mea
 
 Local mode requires neither an account nor a cloud service. For remote access, register an OIDC application and configure the exact owner's subject, HTTPS origin and deployment master key as described in [identity setup](docs/IDENTITY.md). Passkeys and recovery are provided by your chosen identity provider. Do not expose the unauthenticated local mode through a tunnel.
 
+Use [the deployment guide](docs/DEPLOYMENT.md) for the Docker/Caddy recipe, then inspect **Accesso → Preparazione**. Configuration and verified external operation are shown separately. Create a verified backup, keep its key separately and perform [a restore drill](docs/DEPLOYMENT_RECOVERY.md) before relying on a hosted installation.
+
 In the authenticated studio, open **Account e dispositivi**, generate a scoped pairing code and select the paired execution computer. On that computer:
 
 ```sh
@@ -83,6 +89,8 @@ npm run device -- run
 ```
 
 Codex must already be signed in on that computer. Its credentials are never uploaded. Offline devices do not trigger provider fallback. API connections can instead execute on the authenticated server with separately configured API keys.
+
+For code work, grant the separate **Repository** capability and register aliases, scopes and checks on the worker itself; see [remote execution](docs/REMOTE_EXECUTION.md). A text-execution token cannot access a repository. GitHub credentials are another separate connection under **Progetti → GitHub**; they are never supplied to AI prompts or workers. Approval of a patch is followed by a read-only publication preview and a distinct explicit draft-PR action.
 
 Knowledge synchronization is optional and explicitly started from its panel. It covers selected scopes, current memory and procedures, including deletion markers. Conversations, task histories, provider keys and access grants are not replicated between independent installations. For access to the same full workspace from another computer, sign in to the same hosted studio. Read [hybrid operation](docs/HYBRID_IDENTITY_AND_MEMORY.md) and [portable memory](docs/PORTABILITY.md).
 
@@ -108,6 +116,11 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 - [Memory and context design](docs/MEMORY_DESIGN.md)
 - [Hybrid access and assisted memory](docs/HYBRID_IDENTITY_AND_MEMORY.md)
 - [Account and deployment setup](docs/IDENTITY.md)
+- [Hosted installation and readiness](docs/DEPLOYMENT.md)
+- [Verified backups and restore](docs/DEPLOYMENT_RECOVERY.md)
+- [Remote repository execution](docs/REMOTE_EXECUTION.md)
+- [Private GitHub access and reviewed publication](docs/GITHUB.md)
+- [Measuring memory retrieval and usefulness](docs/MEMORY_EVALUATION.md)
 - [Memory export and import](docs/PORTABILITY.md)
 - [Repository execution and review](docs/REPOSITORY_WORK.md)
 - [Documents, research and source provenance](docs/SOURCES.md)
@@ -115,7 +128,7 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 - [Provider setup and adapter limits](docs/PROVIDERS.md)
 - [HTTP API and lifecycle](docs/API.md)
 - [Security, backup and recovery](docs/SECURITY.md)
-- [Version 0.4 validation and outstanding prerequisites](docs/VALIDATION.md)
+- [Validation and outstanding prerequisites](docs/VALIDATION.md)
 - [Competitor research](docs/AGENT_SYSTEMS.md)
 
 ## Office controls

@@ -12,6 +12,8 @@ Owner writes use `POST` and `Content-Type: application/json`. Local mode require
 | `GET /api/workspace` | `{version, scopes, memories, workflows, memoryAssistant, syncTombstones, ...}` |
 | `GET /api/session` | Public login status; authenticated responses include the page CSRF token |
 | `GET /api/access` | Owner-only mode, redacted devices, selected target, storage and sync status |
+| `GET /api/setup` | Owner-only readiness evidence, repository-worker availability and backup metadata |
+| `GET /healthz` | Public minimal `{ok:true}` after host/origin checks; `503` when stopping or archive key-check fails |
 | `GET /api/operations` | `{version, projects, tasks, routines, scheduler}` |
 | `GET /api/providers` | Redacted `{version, connections, assignments, policies}`; never API keys |
 
@@ -103,7 +105,7 @@ The UI must render record content as text, not executable HTML. A reference reco
 
 `POST /api/devices {action,payload}` accepts:
 
-- `pair`: `{name,scopeIds,capabilities:["execute","sync"]}` (one or both), returns a one-time `{code,expiresAt,serverUrl}`. Available only in authenticated remote modes.
+- `pair`: `{name,scopeIds,capabilities:["execute","sync","repository"]}` (any nonempty subset), returns a one-time `{code,expiresAt,serverUrl}`. Available only in authenticated remote modes. Each capability is independent.
 - `target`: `{id:"local"|deviceId}`. Remote mode requires a paired device for Codex; local execution is local-mode only.
 - `revoke`: `{id}`. Stops future claims and rejects active late results without returning device credentials.
 
@@ -133,12 +135,14 @@ Encrypted exports need a passphrase of at least 12 characters. JSON/Markdown are
 
 ## Repository work
 
-`GET /api/repositories` returns local-only capability metadata, registered repositories and lightweight runs. Local mode includes a suggested source path. Patch text and checkout paths are not embedded in run lists.
+`GET /api/repositories` returns capability metadata (`available`, `localAvailable`, `localOnly`), remote worker catalogs, registered repositories and lightweight runs. Local mode includes a suggested source path. Patch text and isolated checkout paths are not embedded in run lists. Remote workers expose aliases rather than their local filesystem paths.
 
 `POST /api/repositories {action,payload}` accepts:
 
 ```text
 register       { projectId, scopeId, path, checks: [{label, program, args}] }
+register       { projectId, scopeId, executionTarget: deviceId, repositoryAlias }
+refresh        { id, expectedVersion }
 create         { repositoryId, title, brief }
 start          { id, expectedVersion }
 pause          { id, expectedVersion }
@@ -148,6 +152,25 @@ proposeMemory  { id, expectedVersion?, title, content, type: "decision" | "patte
 ```
 
 Start durably claims one queued run and returns before execution completes. Poll the GET endpoint for stage/check/review updates. Revision creates a new queued run with a parent link and preserves the earlier artifact. Approval checks the immutable patch hash and actual configured check results. It never publishes or merges. The memory response includes the workspace snapshot alongside the repository snapshot. `GET /api/repositories/patch?id=…` returns an authenticated text attachment; missing, corrupted or unavailable patches fail closed.
+
+Remote registration gets its checks from the worker's local policy; browser paths and commands are refused. Refresh updates the recorded HEAD and policy after checking the worker. Creating or starting a remote run requires the current manifest and authorized scope.
+
+Repository workers use these separate token-authenticated POST routes:
+
+```text
+/api/device/repositories/announce  { repositories: [...] }
+/api/device/repositories/claim     {}
+/api/device/repositories/heartbeat { id, lease, stage? }
+/api/device/repositories/result    { id, lease, result? | error? }
+```
+
+Only `repository` capability accepts them. Results allow an 8 MiB request and carry the exact run, alias, policy hash, base commit, check manifest, patch and usage. A 30-second lease must be renewed; execution is bounded to thirty minutes. Delivery of the same completed receipt can be retried for twenty-four hours. A revoked device, expired lease or different result cannot complete the job. There is no reassignment or automatic edit retry. See [the worker protocol](REMOTE_EXECUTION.md).
+
+## Maintenance
+
+`POST /api/maintenance {action:"backup"|"verify"}` requires the owner's mutation authorization and an idle studio. It returns the setup snapshot. `verify` checks the current archive; `backup` creates a new encrypted SQLite snapshot and verifies its records before recording the file digest. Neither action performs a restore.
+
+`GET /api/maintenance/backup?id=…` downloads an owner-only encrypted attachment selected by its registered ID. Files are validated against encrypted metadata and never selected by a browser-supplied path. No encryption key is included. Restore and explicit backup removal are CLI-only operations; see [recovery](DEPLOYMENT_RECOVERY.md).
 
 ## Dependency plans
 
@@ -175,6 +198,7 @@ At most twenty proposals can await review; the limit is checked before a coordin
 importText     { scopeId, title, text, filename? }
 importDocument { scopeId, title, filename, mimeType, dataBase64 }
 importUrl      { scopeId, url, title? }
+importGitHub   { scopeId, connectionId, repository, ref, path, title? }
 importFolder   { scopeId, path }
 refresh        { id, scopeId, version }
 remove         { id, scopeId, version }
@@ -184,3 +208,33 @@ searchWeb      { scopeId, connectionId, query, domains?, consent: true }
 Imports and refresh return `{source,segments,citationSources}`; research adds execution metadata. Folder import reports imported metadata and skipped entries. Removal returns the removed ID. Read the source list again after mutations. Source actions require an idle studio; research and URL/PDF work receive disconnect cancellation.
 
 PDF/text uploads are bounded to 8 MiB input, 600,000 extracted characters and 200 PDF pages. The JSON HTTP ceiling is 12 MiB to accommodate base64. Text-based PDF extraction does not perform OCR. Local folder roots are the app directory, explicitly registered repositories and optional `FUORI_STUDIO_SOURCE_ROOTS`; remote mode cannot use local folder import. Connectors are read-only. URL retrieval permits bounded public HTTPS requests with DNS/redirect checks, not authenticated browsing or arbitrary endpoints.
+
+Authenticated GitHub file import uses a separately configured connection, repository/scope allowlists and a selected ref/path. It resolves a commit, authenticates the blob SHA and records an immutable commit URL. Refresh rechecks the current connection permission and records a new source version. Imported snapshots remain until removed or expired; disconnecting the account prevents new reads but does not erase an intentionally imported copy.
+
+## Authenticated GitHub
+
+`GET /api/github` returns redacted connections and publication metadata. Tokens and reconstructed candidate file bodies are excluded. `POST /api/github {action,payload}` returns `{result,snapshot}` and requires owner mutation authorization plus an idle studio:
+
+```text
+save       { id?, expectedVersion?, name, token?, scopeIds, repositories, allowPublish }
+disconnect { id, expectedVersion }
+inspect    { connectionId, scopeId, repository }
+preview    { runId, connectionId, repository, baseBranch, title, body }
+publish    { id, expectedVersion }
+reconcile  { id, expectedVersion }
+```
+
+Repository names use `owner/repository`. Tokens are write-only, and publication permission is independent of read access. Preview requires a currently approved run, complete checks and the exact GitHub base; it makes no external writes. Publish creates an isolated branch and draft PR after explicit confirmation. Reconcile reads remote state after an uncertain result; it does not blindly resend writes. GitHub cannot atomically pin a PR's target branch against concurrent changes, so an advanced base is reported for renewed review. No merge endpoint is exposed. See [GitHub operation](GITHUB.md).
+
+## Memory evaluation
+
+`GET /api/evaluations?scopeId=…` returns cases, ordered results, owner feedback, candidate metadata and a summary of current measurements. It never calls an AI. `POST /api/evaluations {action,payload}` accepts:
+
+```text
+saveCase   { id?, expectedVersion?, scopeId, title, query, agentId, expectedIds, forbiddenIds }
+runCase    { id, expectedVersion }
+removeCase { id, expectedVersion }
+feedback   { memoryId, memoryVersion, expectedVersion?, helpful, note? }
+```
+
+Case mutations return the scoped evaluation snapshot. Feedback returns `{saved:true}`; refresh the GET endpoint afterwards. Positive labels must be confirmed and accessible for the selected scope/agent. Negative labels may identify owner-visible notes from other scopes without copying their contents into the evaluated context. Changed labels produce `needs-review`; historical results are excluded from current aggregates. Removing a case removes its run history. See [measurement definitions](MEMORY_EVALUATION.md).

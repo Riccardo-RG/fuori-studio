@@ -1,22 +1,43 @@
-# Version 0.4 validation
+# Version 0.5 validation
 
-Validation recorded on 28 September 2026 with Node 24 on macOS 13.6.3. These results describe this checkout; CI must rerun the checks after subsequent changes.
+Validation recorded on 28 September 2026 with Node 24 on macOS 13.6.3. These results describe the final local checkout. CI and deployment acceptance must run against the actual published revision and destination host.
 
 ## Automated checks
 
-- `npm run check`: JavaScript syntax checks and strict TypeScript checking passed.
-- `npm test`: 192 tests passed, with no failures or skipped tests. This includes temporary HTTP servers, encrypted archives, identity, provider authorization, source provenance, repository work, dependency handoffs, recovery, cancellation and automation limits.
-- `npm run test:offline`: the subset excluding listening HTTP fixtures passed. Use this subset with the syntax/type check when configuring this repository for network-disabled execution; it does not replace the full developer suite.
-- `npm audit --omit=dev --audit-level=high`: no reported runtime dependency vulnerabilities at the time of the check. This is a point-in-time advisory check, not a security certification.
+- `npm run check`: syntax checks for 89 JavaScript modules and strict TypeScript checking passed.
+- `npm test`: **268 tests passed**, with zero failures or skipped tests. Coverage includes encrypted persistence, OIDC/CSRF, provider and scope policy, remote repository leases/receipts, real temporary Git changes/checks, backup authentication and restore resets, GitHub publication/reconciliation, and memory evaluation.
+- The offline subset was verified during implementation. The full final suite includes those tests as well as HTTP fixtures. `npm run test:offline` remains the selected command for network-disabled repository verification; it is not a replacement for the full developer suite.
+- `git diff --check` passed. Docker/Compose configuration received static review and YAML parsing. A CI job now builds the image and boots a disposable hosted configuration to check `/healthz`; that new CI job has not run on GitHub as part of this local session.
+- A fresh `npm audit --omit=dev --audit-level=high` was requested but **not executed**: automatic approval review denied sending the private dependency tree to the external registry without explicit authorization. No current advisory result is claimed. Runtime dependencies were not changed in this release.
 
-## Browser workflow
+## Remote repository execution
 
-A disposable archive and the real application server were exercised at desktop and mobile sizes. The flow created a project, imported text and Markdown sources, previewed and committed a two-task plan, verified its dependency gate, ran and approved the prerequisite, registered a temporary Git repository, prepared a change, executed a real Node test, inspected the patch, recorded human approval, proposed memory and recorded outcome feedback. An existing uncommitted edit in the original repository was preserved.
+An authenticated hosted HTTP fixture paired a device with repository capability only, registered its worker-local policy, ran the actual worker with an injected AI executable, produced a Git patch and executed a real Node check. The original dirty checkout was preserved. The owner reviewed and approved the returned artifact and proposed memory. Usage reports reached the governor. Separate tests exercised scope/policy changes, lease expiry, cancellation, revocation, receipt tampering, restart and redelivery without repeating an edit.
 
-The AI executable was deliberately simulated for this test. Git snapshots, filesystem operations, Node checks, HTTP handlers, encrypted persistence and browser interactions were real. No paid inference or personal credentials were used. Separate browser checks covered failed checks, stale revisions, escaped untrusted text, source links, scope changes, mobile fullscreen and the actual WebGL world. No browser JavaScript errors were observed in the complete workflow.
+The injected AI is explicit test infrastructure. These results do not establish that a paid model or real Codex sandbox works on a particular computer.
 
-## External services and remaining prerequisites
+## Backup and restore
 
-Public HTTPS and anonymous GitHub repository metadata imports were verified using the actual restricted transport. Live OpenAI web search and other paid provider calls were not exercised; those require separately configured credentials and scope permission. Hosted OIDC login and a real paired second computer were not deployed as part of this local validation.
+Disposable archives exercised every-record authenticated decryption, SQLite integrity, wrong keys, corruption, symlink rejection, digest changes, private permissions and concurrent managed backups. Restore tests required a new destination, preserved source files and project data, revoked previous sessions/devices/sync, disabled autonomy and blocked incomplete restores. HTTP tests verified owner access, CSRF, exact hosts and encrypted downloads; no HTTP restore or delete route exists.
 
-Real Codex repository editing remains blocked on the inspected host by its sandbox preflight error, `TIOCSTI`. Tests with a fake executable do not establish Codex compatibility. The application retains isolation and requires a compatible runtime/host before a real repository assignment can execute. See [repository compatibility](REPOSITORY_WORK.md#host-compatibility-diagnostic).
+The existing local archive was separately backed up and verified before restarting the updated preview. That encrypted copy remains outside Git. This is a local preservation step, not proof of off-host retention.
+
+## GitHub
+
+Adapter tests used an injected fixed-host GitHub transport. Independent security tests exercised credential redaction, permission/approval revocation during publication, path collisions and secret-bearing errors. Actual Git-generated patches validated byte-exact reconstruction, full-index blob hashes, newline variants, executable modes, empty files and UTF-8 paths.
+
+Tests covered read-only previews, exact candidate verification, stale bases, ambiguous write outcomes, restart recovery, reconciliation without duplicate PR creation and the base-branch race reported by a known-created PR. No real GitHub token was used and no external branch or PR was created.
+
+## Browser workflows
+
+The real application server ran on a separate loopback port with a disposable encrypted archive. Sixteen integrated checks exercised archive verification and downloaded backup SHA-256, an owner-labeled memory case, private-scope exclusion, real retrieval, correction in the actual memory editor, stale-label detection, reviewed labels and another run, versioned feedback, scope switching, and write-only fixture GitHub connection save/disconnect.
+
+The browser blocked external destinations, and Codex pointed to a nonexistent fixture path. No AI request or external GitHub request was made. Desktop 1440 px and mobile 390 px layouts were checked with zero JavaScript errors or horizontal overflow. Separate mocked-browser tests covered publication preview/confirmation, uncertain reconciliation, the advanced-base warning, repository-to-GitHub navigation, keyboard controls and night mode.
+
+## External acceptance still required
+
+The web container, public DNS/TLS, real OIDC account, live private GitHub token and second execution computer were not deployed here. Docker is not installed on this development Mac. Use [deployment](DEPLOYMENT.md), [recovery](DEPLOYMENT_RECOVERY.md), [remote execution](REMOTE_EXECUTION.md) and [GitHub](GITHUB.md) to perform those checks on the chosen environment.
+
+Real Codex repository editing remains blocked on the previously inspected macOS 13.6.3 host by its `TIOCSTI` sandbox preflight failure. The new implementation does not disable or bypass that sandbox and no further runtime probes were performed. A compatible execution host/runtime is required. See [the diagnostic](REPOSITORY_WORK.md#host-compatibility-diagnostic).
+
+Memory tests verify deterministic retrieval behavior. No production memory library has been declared accurate or useful without representative owner-labeled cases. These measurements are available through [memory evaluation](MEMORY_EVALUATION.md); passing presence checks does not prove answer accuracy or complete context.

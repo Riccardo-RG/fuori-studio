@@ -5,6 +5,7 @@ import { createRepositoriesPanel } from './repositories.js';
 import { createPlanningPanel } from './plans.js';
 import { createGovernancePanel } from './governance.js';
 import { createSourcesPanel } from './sources.js';
+import { createGithubPanel } from './github.js';
 
 const html = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const shorten = (value, max = 230) => String(value ?? '').length > max ? `${String(value).slice(0, max).trimEnd()}…` : String(value ?? '');
@@ -25,11 +26,12 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
   panel.id = 'operations-panel';
   panel.className = 'operations-panel';
   panel.setAttribute('aria-labelledby','operations-title');
-  panel.innerHTML = `<div class="ops-heading"><div><div class="eyebrow">DA UN’IDEA A UNA CONSEGNA</div><h2 id="operations-title">Il lavoro che porti avanti.</h2><p>Progetti, incarichi e decisioni. Con un filo che rimane.</p></div><div class="ops-heading-actions"><button type="button" class="ops-icon" data-action="refresh" aria-label="Aggiorna progetti e attività" title="Aggiorna">↻</button><button type="button" class="ops-button is-primary" data-action="new-project" data-mutation>＋ Nuovo progetto</button></div></div><div class="ops-toolbar"><div class="ops-tabs" role="tablist" aria-label="Gestione dello studio"><button type="button" role="tab" id="ops-tab-projects" data-tab="projects" aria-selected="true" aria-controls="ops-content">Progetti <span data-count="projects">0</span></button><button type="button" role="tab" id="ops-tab-review" data-tab="review" aria-selected="false" aria-controls="ops-content" tabindex="-1">Da decidere <span data-count="review">0</span></button><button type="button" role="tab" id="ops-tab-routines" data-tab="routines" aria-selected="false" aria-controls="ops-content" tabindex="-1">Routine <span data-count="routines">0</span></button><button type="button" role="tab" id="ops-tab-repositories" data-tab="repositories" aria-selected="false" aria-controls="repo-panel" tabindex="-1">Repository <span data-count="repositories">0</span></button><button type="button" role="tab" id="ops-tab-sources" data-tab="sources" aria-selected="false" aria-controls="sources-panel" tabindex="-1">Fonti <span data-count="sources">0</span></button><button type="button" role="tab" id="ops-tab-results" data-tab="results" aria-selected="false" aria-controls="governance-panel" tabindex="-1">Risultati</button><button type="button" role="tab" id="ops-tab-providers" data-tab="providers" aria-selected="false" aria-controls="ops-content" tabindex="-1">Servizi AI</button></div><div class="ops-filter"><label for="ops-scope-filter" class="visually-hidden">Ambiti mostrati</label><select id="ops-scope-filter"><option value="current">Ambito attuale</option><option value="all">Tutti gli ambiti</option></select></div></div><div class="ops-status" role="status" aria-live="polite">Caricamento dei progetti…</div><div id="ops-content" class="ops-content" role="tabpanel" aria-labelledby="ops-tab-projects" tabindex="0"></div><p class="ops-footnote">Gli incarichi generano bozze dai materiali forniti. Ogni avvio è esplicito; approvi tu le consegne.</p>`;
+  panel.innerHTML = `<div class="ops-heading"><div><div class="eyebrow">DA UN’IDEA A UNA CONSEGNA</div><h2 id="operations-title">Il lavoro che porti avanti.</h2><p>Progetti, incarichi e decisioni. Con un filo che rimane.</p></div><div class="ops-heading-actions"><button type="button" class="ops-icon" data-action="refresh" aria-label="Aggiorna progetti e attività" title="Aggiorna">↻</button><button type="button" class="ops-button is-primary" data-action="new-project" data-mutation>＋ Nuovo progetto</button></div></div><div class="ops-toolbar"><div class="ops-tabs" role="tablist" aria-label="Gestione dello studio"><button type="button" role="tab" id="ops-tab-projects" data-tab="projects" aria-selected="true" aria-controls="ops-content">Progetti <span data-count="projects">0</span></button><button type="button" role="tab" id="ops-tab-review" data-tab="review" aria-selected="false" aria-controls="ops-content" tabindex="-1">Da decidere <span data-count="review">0</span></button><button type="button" role="tab" id="ops-tab-routines" data-tab="routines" aria-selected="false" aria-controls="ops-content" tabindex="-1">Routine <span data-count="routines">0</span></button><button type="button" role="tab" id="ops-tab-repositories" data-tab="repositories" aria-selected="false" aria-controls="repo-panel" tabindex="-1">Repository <span data-count="repositories">0</span></button><button type="button" role="tab" id="ops-tab-github" data-tab="github" aria-selected="false" aria-controls="github-panel" tabindex="-1">GitHub</button><button type="button" role="tab" id="ops-tab-sources" data-tab="sources" aria-selected="false" aria-controls="sources-panel" tabindex="-1">Fonti <span data-count="sources">0</span></button><button type="button" role="tab" id="ops-tab-results" data-tab="results" aria-selected="false" aria-controls="governance-panel" tabindex="-1">Risultati</button><button type="button" role="tab" id="ops-tab-providers" data-tab="providers" aria-selected="false" aria-controls="ops-content" tabindex="-1">Servizi AI</button></div><div class="ops-filter"><label for="ops-scope-filter" class="visually-hidden">Ambiti mostrati</label><select id="ops-scope-filter"><option value="current">Ambito attuale</option><option value="all">Tutti gli ambiti</option></select></div></div><div class="ops-status" role="status" aria-live="polite">Caricamento dei progetti…</div><div id="ops-content" class="ops-content" role="tabpanel" aria-labelledby="ops-tab-projects" tabindex="0"></div><p class="ops-footnote">Gli incarichi generano bozze dai materiali forniti. Ogni avvio è esplicito; approvi tu le consegne.</p>`;
   const repositoryHost=document.createElement('div');repositoryHost.id='repo-panel';repositoryHost.className='ops-content repo-panel';repositoryHost.hidden=true;repositoryHost.setAttribute('role','tabpanel');repositoryHost.setAttribute('aria-labelledby','ops-tab-repositories');panel.querySelector('#ops-content').after(repositoryHost);
   const governanceHost=document.createElement('div');governanceHost.id='governance-panel';governanceHost.className='ops-content governance-panel';governanceHost.hidden=true;governanceHost.setAttribute('role','tabpanel');governanceHost.setAttribute('aria-labelledby','ops-tab-results');repositoryHost.after(governanceHost);
   const governanceSettings=document.createElement('div');governanceSettings.id='governance-settings';
   const sourcesHost=document.createElement('div');sourcesHost.id='sources-panel';sourcesHost.className='ops-content sources-panel';sourcesHost.hidden=true;sourcesHost.setAttribute('role','tabpanel');sourcesHost.setAttribute('aria-labelledby','ops-tab-sources');governanceHost.after(sourcesHost);
+  const githubHost=document.createElement('div');githubHost.id='github-panel';githubHost.className='ops-content github-panel';githubHost.hidden=true;githubHost.setAttribute('role','tabpanel');githubHost.setAttribute('aria-labelledby','ops-tab-github');sourcesHost.after(githubHost);
   const insertion = document.querySelector('#knowledge-panel') || document.querySelector('.team-section') || document.querySelector('main footer');
   if (insertion) insertion.before(panel); else document.querySelector('main')?.append(panel);
   const dialog = document.createElement('dialog');
@@ -54,6 +56,8 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
   const repositories=createRepositoriesPanel({host:repositoryHost,toast,onRefreshMemory,onOutcome:target=>governance.openOutcome(target),onNewProject:()=>projectForm(),onActivity:value=>{repositoryRuns=value.runs;governance.setContext({tasks:operations.tasks,runs:repositoryRuns,workflows:workspace.workflows});reportActivity();onRepositoryActivity(value);const count=$('[data-count="repositories"]');if(count)count.textContent=value.repositories.filter(item=>filter==='all'||item.scopeId===scopeId).length;}});
   const planning=createPlanningPanel({toast,onCommit:value=>{acceptOperations(value);tab='projects';render();schedulePoll();}});
   const sources=createSourcesPanel({host:sourcesHost,toast,onCount:count=>{const element=$('[data-count="sources"]');if(element)element.textContent=count;},onProviders:()=>{tab='providers';render();},onChanged:()=>void governance.load()});
+  const github=createGithubPanel({host:githubHost,toast,onSourcesChanged:()=>void sources.load()});
+  window.addEventListener('studio-open-github',event=>{tab='github';render();panel.scrollIntoView({block:'start',behavior:'smooth'});void github.open(event.detail||{});});
   const taskDependencies=task=>(task.dependencies||[]).map(id=>taskFor(id)||{id,title:'Incarico precedente non disponibile',status:'missing'});
   const dependencyApproved=task=>task.status==='completed'&&task.artifacts?.at(-1)?.decision==='approved';
   const pendingDependencies=task=>taskDependencies(task).filter(item=>!dependencyApproved(item));
@@ -93,7 +97,7 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
   }
   function syncLocks() {
     panel.setAttribute('aria-busy',String(loading));
-    repositories.setBusy(busy||loading||mutating);planning.setBusy(busy||loading||mutating);governance.setBusy(busy||loading||mutating);sources.setBusy(busy||loading||mutating);
+    repositories.setBusy(busy||loading||mutating);planning.setBusy(busy||loading||mutating);governance.setBusy(busy||loading||mutating);sources.setBusy(busy||loading||mutating);github.setBusy(busy||loading||mutating);
     panel.querySelectorAll('[data-mutation]').forEach(element => {element.disabled = locked();});
     panel.querySelectorAll('[data-action="refresh"]').forEach(element => {element.disabled = loading || mutating;});
     if (dialog.open) dialog.querySelectorAll('[data-mutation],button[type="submit"]').forEach(element => {element.disabled = locked();});
@@ -190,7 +194,8 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
     repositories.setContext({projects:operations.projects,scopes:workspace.scopes,scopeId,filter,projectId});repositories.setVisible(tab==='repositories');
     governance.setContext({tasks:operations.tasks,runs:repositoryRuns,workflows:workspace.workflows});governance.setVisible({dashboard:tab==='results',settings:tab==='routines'});
     sources.setContext({scopeId,scopes:workspace.scopes,providers});sources.setVisible(tab==='sources');
-    $('#ops-content').hidden=['repositories','results','sources'].includes(tab);
+    github.setContext({scopeId,scopes:workspace.scopes,runs:repositoryRuns,filter});github.setVisible(tab==='github');
+    $('#ops-content').hidden=['repositories','results','sources','github'].includes(tab);
     $('.ops-footnote').textContent=governance.getSettings()?.autonomousRoutines?'Gli incarichi generano bozze da approvare. Le routine abilitate possono avviarsi automaticamente entro i limiti scelti.':'Gli incarichi generano bozze dai materiali forniti. Ogni avvio è esplicito; approvi tu le consegne.';
     $('[data-count="repositories"]').textContent=repositories.getSnapshot().repositories.filter(item=>filter==='all'||item.scopeId===scopeId).length;
     const projects = visibleProjects();
@@ -205,7 +210,7 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
     else if (loadError) {$('.ops-status').textContent = loadError;$('#ops-content').innerHTML = empty('Non è stato possibile caricare lo studio.','Le informazioni salvate non sono state modificate. Usa il pulsante Aggiorna per riprovare.');}
     else {
       const running = operations.tasks.filter(activeTask).length;
-      $('.ops-status').textContent = `${tab === 'providers' ? scopeName(scopeId) : filter === 'all' ? 'Tutti gli ambiti' : scopeName(scopeId)}${running ? ` · ${running} incarich${running === 1 ? 'o' : 'i'} in lavorazione · aggiornamento automatico` : ' · salvato sul tuo computer'}`;
+      $('.ops-status').textContent = `${tab === 'providers' ? scopeName(scopeId) : filter === 'all' ? 'Tutti gli ambiti' : scopeName(scopeId)}${running ? ` · ${running} incarich${running === 1 ? 'o' : 'i'} in lavorazione · aggiornamento automatico` : ' · salvato nello studio'}`;
       $('#ops-content').innerHTML = tab === 'projects' ? projectsView() : tab === 'review' ? reviewView() : tab === 'routines' ? routinesView() : tab === 'providers' ? providersView() : '';
       if (operations.scheduler?.error) {
         const warning = document.createElement('p');warning.className='ops-error';warning.textContent=`Una routine richiede attenzione: ${operations.scheduler.error}`;
@@ -423,7 +428,7 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
   });
   panel.querySelector('[role="tablist"]').addEventListener('keydown',event => {
     if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
-    event.preventDefault();const tabs=['projects','review','routines','repositories','sources','results','providers'];
+    event.preventDefault();const tabs=['projects','review','routines','repositories','github','sources','results','providers'];
     const index=tabs.indexOf(tab);tab=tabs[event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length-1 : (index+(event.key === 'ArrowRight' ? 1 : -1)+tabs.length)%tabs.length];
     render();$(`[data-tab="${tab}"]`).focus();
   });
@@ -441,5 +446,5 @@ export function createOperationsPanel({toast = () => {},onScopeChange = async ()
     if (action === 'memory') memoryFromTask(task);
     if (action === 'download') downloadArtifact(task);
   });
-  return {load,getRepositorySnapshot:()=>repositories.getSnapshot(),openSection(section) {if (!['projects','review','routines','repositories','sources','results','providers'].includes(section)) return;tab=section;projectId=null;render();},openTask(id) {if (taskFor(id)) renderTaskDialog(id);},setScope(id) {if (!id) return;scopeId=id;projectId=null;render();},setBusy(value) {busy=Boolean(value);syncLocks();}};
+  return {load,getRepositorySnapshot:()=>repositories.getSnapshot(),openSection(section) {if (!['projects','review','routines','repositories','github','sources','results','providers'].includes(section)) return;tab=section;projectId=null;render();},openTask(id) {if (taskFor(id)) renderTaskDialog(id);},setScope(id) {if (!id) return;scopeId=id;projectId=null;render();},setBusy(value) {busy=Boolean(value);syncLocks();}};
 }

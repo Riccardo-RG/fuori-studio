@@ -25,18 +25,18 @@ The chat remains useful for exploration. It is separate from durable assignments
 
 ## Current boundaries
 
-This release remains a single-owner product with local and optional authenticated hosted operation. It includes scoped memory, identity, portability, source ingestion and live research, dependency plans, guarded routines, outcome measurements, and local repository work. Repository editing requires a compatible local Codex sandbox; web research requires a separately configured OpenAI API connection.
+This release remains a single-owner product with local and optional authenticated hosted operation. It includes scoped memory, identity, portability, source ingestion and live research, dependency plans, guarded routines, outcome measurements, and repository work locally or through authorized workers. Hosted preparation includes readiness checks and verified backup/restore. Private GitHub access and reviewed draft PR publication use separate scoped credentials. Owner-labeled retrieval cases measure memory selection and exclusions. Repository editing requires a compatible Codex sandbox on the execution computer; web research requires a separately configured OpenAI API connection.
 
-It does not include automatic GitHub publication, multi-user organizations, arbitrary browser automation, OCR for scanned documents, semantic/vector search or hard monetary budgets. Calendar and messaging integrations are future connectors; the initial connectors are local folders and public GitHub sources.
+It does not include automatic GitHub publication, merging, multi-user organizations, arbitrary browser automation, OCR for scanned documents, semantic/vector search or hard monetary budgets. Calendar and messaging integrations are future connectors. GitHub private text files and draft PRs require explicit owner actions; there is no automatic issue polling or CI follow-up.
 
 Provider usage is shown only when returned by the adapter. Missing usage is unknown, not zero. No costs or business metrics are invented. External provider connections require the user's own valid API credentials; consumer subscriptions do not automatically supply API credit.
 
 ## Further delivery gates
 
 1. Measure real owned-product briefs and patches through the delivered loops; distinguish fixture tests from validated account/runtime operation.
-2. Add authenticated GitHub publishing only with separate write permissions and review of the exact candidate.
+2. Exercise authenticated GitHub publication on a disposable private repository before relying on it for owned products.
 3. Add calendar and private document connectors with narrowly scoped account grants.
-4. Evaluate memory and retrieval quality before introducing embeddings or broader automatic learning.
+4. Collect and run representative owner-labeled memory cases before introducing embeddings or broader automatic learning.
 5. Introduce tenant-aware authorization before opening multi-user registration.
 6. Extend unattended work only with explicit event, retry and notification policies.
 

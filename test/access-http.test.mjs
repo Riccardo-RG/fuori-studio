@@ -33,7 +33,7 @@ test('remote HTTP requires owner session, CSRF and exact origin; device tokens c
     const body=JSON.parse(result.text); assert.equal(result.status,status,`${path}: ${JSON.stringify(body)}`); return body;
   }
   assert.equal((await request('/api/session')).authenticated, false);
-  for (const endpoint of ['/api/studio', '/api/workspace', '/api/operations', '/api/providers', '/api/access']) await request(endpoint, { status: 401 });
+  for (const endpoint of ['/api/studio', '/api/workspace', '/api/operations', '/api/providers', '/api/access', '/api/github', '/api/evaluations?scopeId=business']) await request(endpoint, { status: 401 });
   assert.equal((await request('/api/session', { owner: true })).authenticated, true);
   const access = await request('/api/access', { owner: true }); assert.equal(access.storage.encrypted, true);
   await request('/api/workspace', { payload: { action: 'createScope', payload: { name: 'Test', kind: 'project', parentId: 'business' } }, owner: true, headers: { 'X-CSRF-Token': '' }, status: 403 });
@@ -45,6 +45,8 @@ test('remote HTTP requires owner session, CSRF and exact origin; device tokens c
   await request('/api/device/pair', { payload: { code: pairing.code }, status: 401 });
   const deviceHeaders = { Authorization: `Bearer ${device.token}` };
   await request('/api/workspace', { headers: deviceHeaders, status: 401 });
+  await request('/api/github', { headers: deviceHeaders, status: 401 });
+  await request('/api/evaluations?scopeId=business', { headers: deviceHeaders, status: 401 });
   await request('/api/device/sync', { payload: { scopeIds: ['business'], records: {}, bases: {}, scopes: [] }, headers: deviceHeaders, status: 401 });
   assert.equal((await request('/api/device/claim', { payload: {}, headers: deviceHeaders })).job, null);
   await request('/api/devices', { owner: true, payload: { action: 'target', payload: { id: device.deviceId } } });
@@ -54,6 +56,24 @@ test('remote HTTP requires owner session, CSRF and exact origin; device tokens c
   const secondPair = await request('/api/devices', {owner:true,payload:{action:'pair',payload:{name:'Private sync device',scopeIds:['personal'],capabilities:['sync']}}});
   const secondDevice = await request('/api/device/pair', {payload:{code:secondPair.code}});
   assert.deepEqual(await request('/api/device/disconnect', {payload:{},headers:{Authorization:`Bearer ${secondDevice.token}`}}),{ok:true});
+  const connectionInput = { name: 'Private repositories', token: 'fixture-github-credential-123456', scopeIds: ['business'], repositories: ['owner/private'], allowPublish: false };
+  await request('/api/github', { owner: true, payload: { action: 'save', payload: connectionInput }, headers: { 'X-CSRF-Token': '' }, status: 403 });
+  const connection = await request('/api/github', { owner: true, payload: { action: 'save', payload: connectionInput } });
+  assert.equal(connection.snapshot.connections[0].tokenConfigured, true);
+  assert.ok(!JSON.stringify(connection).includes(connectionInput.token));
+  await request('/api/github', { owner: true, payload: { action: 'publish', payload: { id: 'missing', expectedVersion: 1 } }, status: 404 });
+  const workspace = await request('/api/workspace', { owner: true, payload: { action: 'saveMemory', payload: { scopeId: 'business', title: 'Runtime deployment', content: 'Use Node 24 for the studio.', type: 'fact', status: 'confirmed', source: 'Fixture owner', sharedWith: [], agentIds: [] } } });
+  const memory = workspace.memories.at(-1);
+  const evalInput = { scopeId: 'business', title: 'Runtime retrieval', query: 'runtime deployment', agentId: 'forge', expectedIds: [memory.id], forbiddenIds: [] };
+  await request('/api/evaluations', { owner: true, payload: { action: 'saveCase', payload: evalInput }, headers: { 'X-CSRF-Token': '' }, status: 403 });
+  const evaluations = await request('/api/evaluations', { owner: true, payload: { action: 'saveCase', payload: evalInput } }), item = evaluations.cases[0];
+  const evaluation = await request('/api/evaluations', { owner: true, payload: { action: 'runCase', payload: { id: item.id, expectedVersion: item.version } } });
+  assert.equal(evaluation.runs[0].status, 'passed'); assert.equal(evaluation.noAiCalls, true);
+  await request('/api/evaluations?scopeId=unknown', { owner: true, status: 403 });
+  await request('/api/evaluations', { owner: true, payload: { action: 'feedback', payload: { memoryId: memory.id, memoryVersion: memory.version, helpful: true } } });
+  assert.equal((await request('/api/evaluations?scopeId=business', { owner: true })).feedback.length, 1);
+  await request('/api/evaluations', { owner: true, payload: { action: 'removeCase', payload: { id: item.id, expectedVersion: item.version } } });
+  assert.equal((await request('/api/evaluations?scopeId=business', { owner: true })).runs.length, 0);
   await request('/auth/logout', { owner: true, payload: {} });
   await request('/api/workspace', { owner: true, status: 401 });
 });

@@ -112,4 +112,12 @@ Use **Fonti** to import text, Markdown or text-based PDFs, capture a public page
 
 Use **Repository** for isolated changes and real command evidence. The original working directory is preserved. Review the patch and checks before approval; approval never merges or publishes it. See [the full repository workflow](REPOSITORY_WORK.md).
 
+In an online studio, select a repository worker that has been paired with the separate repository permission. Register its aliases and checks on that computer first. Its status and locally approved commands appear in the repository form. A disconnected worker can redeliver a saved result without rerunning the edit.
+
+Use **Progetti → GitHub** to configure an encrypted, scoped account connection. Read access can import selected private text files. Enable publication only when needed. After approving a repository run, **Prepara PR GitHub** shows the destination, immutable base and patch hash. A separate confirmation creates a new branch and draft pull request. If the outcome is uncertain, use **Verifica esito**; do not assume it failed and create another proposal. Inspect GitHub before merging, especially if the base changed.
+
+Use **Memoria → Valuta memoria** to save real questions with expected and excluded memories, then run retrieval checks without AI calls. Results show missing notes, scope exclusions, order and truncation. A changed note requires reviewed labels; a passing ID-presence test does not prove that the answer or full memory content is correct. Record usefulness feedback and open the actual note to correct it. See [memory evaluation](MEMORY_EVALUATION.md).
+
+Use **Accesso → Preparazione** to distinguish configured services from verified evidence, check archive integrity, create a verified backup and download its encrypted file. Keep the key separately and follow [the recovery guide](DEPLOYMENT_RECOVERY.md) for a restore drill. This panel does not publish the installation automatically.
+
 **Risultati** shows accepted and revised deliveries, recorded cycle durations and available token counts. Feedback and minutes saved are your own estimates and are labeled separately. **Routine** contains daily AI-call limits and optional autonomous execution. Autonomy is off initially and requires an explicit save; it does not wake a stopped server. See [limits and outcomes](GOVERNANCE.md).

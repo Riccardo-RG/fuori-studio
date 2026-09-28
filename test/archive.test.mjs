@@ -126,3 +126,23 @@ test('remote archives require a deployment key and encrypted backups restore wit
   t.after(() => restored.close());
   assert.deepEqual(await restored.read('workspace'), { content: 'recoverable-secret' });
 });
+
+test('verification authenticates every encrypted record and does not disclose plaintext', async t => {
+  const { archive, database, directory } = await fixture(t);
+  await archive.write('verified', { secret: 'never-return-this' });
+  const live = await archive.verify();
+  assert.deepEqual(Object.keys(live).sort(), ['ok', 'records', 'verifiedAt']);
+  assert.equal(live.ok, true); assert.equal(live.records, 2);
+  const backup = join(directory, 'verified.sqlite'); await archive.backup(backup);
+  assert.equal((await archive.verifyBackup(backup)).records, 2);
+  await writeFile(backup + '-wal', 'unexpected');
+  await assert.rejects(archive.verifyBackup(backup), { code: 'ARCHIVE_VERIFY_FAILED' });
+  await unlink(backup + '-wal');
+  const damaged = new DatabaseSync(backup);
+  damaged.prepare('UPDATE records SET revision=revision+1 WHERE key=?').run('verified'); damaged.close();
+  await assert.rejects(archive.verifyBackup(backup), { code: 'ARCHIVE_VERIFY_FAILED' });
+  assert.equal((await archive.verify()).ok, true);
+  const connection = new DatabaseSync(database);
+  connection.prepare('UPDATE records SET value=? WHERE key=?').run(Buffer.alloc(30), 'verified'); connection.close();
+  await assert.rejects(archive.verify(), { code: 'ARCHIVE_VERIFY_FAILED' });
+});

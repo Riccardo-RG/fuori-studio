@@ -14,3 +14,24 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the hosted web image
+        run: docker build --tag fuori-studio:ci .
+      - name: Start without an AI runtime and verify health
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_key=$(openssl rand -base64 32)
+          docker run --detach --name studio-ci --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=64m --volume studio-ci-data:/data --env FUORI_STUDIO_MODE=hybrid --env FUORI_STUDIO_PUBLIC_URL=https://studio.example.com --env FUORI_STUDIO_OIDC_ISSUER=https://identity.example.com --env FUORI_STUDIO_OIDC_CLIENT_ID=fixture --env FUORI_STUDIO_OIDC_CLIENT_SECRET=fixture --env FUORI_STUDIO_OWNER_SUBJECT=fixture --env FUORI_STUDIO_MASTER_KEY="$fixture_key" fuori-studio:ci
+          for attempt in $(seq 1 20); do
+            if docker exec studio-ci node scripts/healthcheck.mjs; then exit 0; fi
+            sleep 2
+          done
+          docker logs studio-ci
+          exit 1
+      - name: Stop disposable container
+        if: always()
+        run: docker rm --force studio-ci || true

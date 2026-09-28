@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
-import { readFile, stat, realpath } from 'node:fs/promises';
+import { readFile, stat, realpath, open } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve, sep, extname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getState, newConversation, selectScope, providerStatus, chatTurn, shutdownChat, rememberMessage } from './lib/chat.mjs';
@@ -21,6 +23,11 @@ import { createPlanService } from './lib/plans.ts';
 import { createGovernance, aggregateOperations } from './lib/governance.ts';
 import { createSourceStore } from './lib/sources.ts';
 import { configureSourceContext } from './lib/context.mjs';
+import { createRepositoryDeviceHub } from './lib/repository-devices.ts';
+import { createMaintenance } from './lib/maintenance.ts';
+import { deploymentSnapshot } from './lib/deployment.ts';
+import { createGitHub } from './lib/github.ts';
+import { createMemoryEvaluations } from './lib/memory-evaluations.ts';
 
 const appRoot = dirname(fileURLToPath(import.meta.url));
 const root = resolve(appRoot, 'dist');
@@ -33,24 +40,29 @@ const allowedHosts = new Set(mode === 'local' ? [`127.0.0.1:${port}`, `localhost
 const allowedOrigins = new Set(mode === 'local' ? [...allowedHosts].map(host => `http://${host}`) : [publicOrigin]);
 const bindHost = mode === 'local' ? '127.0.0.1' : (process.env.FUORI_STUDIO_BIND || '127.0.0.1');
 const devices = createDeviceHub({ storage: defaultArchive, publicUrl: mode === 'local' ? null : publicOrigin, allowLocalExecution: mode === 'local' });
+const repositoryDevices = createRepositoryDeviceHub({ storage: defaultArchive, devices });
+const maintenance = createMaintenance({ archive: defaultArchive, directory: resolve(process.env.FUORI_STUDIO_DATA_DIR || resolve(appRoot, '.local')) });
 const sync = createSyncService({ storage: defaultArchive, workspace: workspaceStore, devices });
 const portability = createPortability({storage:defaultArchive,workspace:workspaceStore});
 const plans = createPlanService();
 const governance = createGovernance({ storage: defaultArchive });
 configureExecutionGovernor((...args) => governance.execute(...args));
 const repositoryWork = createRepositoryWork({
-  storage: defaultArchive, workspace: workspaceStore, operations: operationsStore, providers: providerStore, mode, projectRoot: appRoot,
+  storage: defaultArchive, workspace: workspaceStore, operations: operationsStore, providers: providerStore, mode, projectRoot: appRoot, remote: repositoryDevices,
   executeEditor: (...args) => governance.execute(...args),
   authorizeExecution: async () => {
-    if (mode !== 'local' || (await devices.snapshot()).executionTarget !== 'local') {
-      throw fail('Il lavoro sui repository richiede Codex su questo computer. Seleziona l’esecuzione locale in Accesso e dispositivi.', 409);
+    if (mode !== 'local') {
+      throw fail('Il lavoro sul repository locale richiede questa installazione locale. Per lo studio online scegli un computer repository autorizzato.', 409);
     }
   },
 });
+const github = createGitHub({ storage: defaultArchive, workspace: workspaceStore, approvedRun: input => repositoryWork.approvedPublication(input) });
+const evaluations = createMemoryEvaluations({ storage: defaultArchive, workspace: workspaceStore });
 const sources = createSourceStore({
   storage: defaultArchive, workspace: workspaceStore, mode,
-  allowedRoots: async () => [appRoot, ...(await repositoryWork.snapshot()).repositories.map(repository => repository.path), ...(process.env.FUORI_STUDIO_SOURCE_ROOTS || '').split(delimiter).filter(Boolean)],
+  allowedRoots: async () => [appRoot, ...(await repositoryWork.snapshot()).repositories.filter(repository => !repository.executionTarget || repository.executionTarget === 'local').map(repository => repository.path), ...(process.env.FUORI_STUDIO_SOURCE_ROOTS || '').split(delimiter).filter(Boolean)],
   search: input => providerStore.research(input),
+  github: input => github.readFile(input),
 });
 configureSourceContext(sources);
 configureCodexExecution({ authorize: scopeId => devices.authorize(scopeId), run: async (prompt, options) => { const result = await devices.run(prompt, options); return result === null ? runCodex(prompt, options) : result; } });
@@ -65,7 +77,7 @@ async function body(req, limit = 120000) {
 }
 let changing = false, closing = false, routineError = null;
 const releaseLock = await acquireInstanceLock(resolve(process.env.FUORI_STUDIO_DATA_DIR || resolve(appRoot, '.local')));
-try { await defaultArchive.init(); await identity.init(); await devices.recover(); await getState(); await operationsStore.recoverInterrupted(); await providerStore.getSnapshot(); await repositoryWork.recoverInterrupted(); await governance.recoverInterrupted(); await sources.allMetadata(); }
+try { await defaultArchive.init(); await identity.init(); await devices.recover(); await repositoryDevices.recover(); await getState(); await operationsStore.recoverInterrupted(); await providerStore.getSnapshot(); await repositoryWork.recoverInterrupted(); await governance.recoverInterrupted(); await github.recover(); await sources.allMetadata(); }
 catch (error) { await releaseLock(); throw error; }
 const isBusy = async () => taskExecutor.busy || repositoryWork.busy || (await getState()).busy;
 const requireIdle = async () => { if (await isBusy()) throw fail('Attendi la risposta del team o metti in pausa l’incarico prima di modificare il contesto o i servizi.', 409); };
@@ -126,6 +138,9 @@ async function effectiveProviderStatus() {
 async function governanceSnapshot() {
   return { ...await governance.snapshot(), metrics: aggregateOperations(await operationsStore.getSnapshot(), await repositoryWork.snapshot()) };
 }
+async function setupSnapshot(req) {
+  return deploymentSnapshot({ storage: defaultArchive.info(), authenticated: Boolean(await identity.getSession(req)), workers: (await repositoryDevices.catalog()).workers, maintenance: await maintenance.snapshot() });
+}
 const server = createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -139,18 +154,29 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, publicOrigin);
     const pathname = decodeURIComponent(url.pathname);
     if (mode !== 'local') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    if (pathname === '/healthz' && req.method === 'GET') {
+      if (closing) { json(res, 503, { ok: false }); return; }
+      try { const sentinel = await defaultArchive.read('system/key-check'); json(res, sentinel?.marker === 'fuori-studio-v1' ? 200 : 503, { ok: sentinel?.marker === 'fuori-studio-v1' }); }
+      catch { json(res, 503, { ok: false }); }
+      return;
+    }
     if (await identity.handle(req, res, url)) return;
     if (pathname === '/api/session' && req.method === 'GET') { json(res, 200, await identity.getPublicStatus(req)); return; }
     if (pathname.startsWith('/api/device/')) {
       if (mode === 'local') throw fail('Il collegamento remoto richiede una modalità autenticata e HTTPS.', 403);
       if (req.method !== 'POST' || !req.headers['content-type']?.startsWith('application/json')) throw fail('Richiesta dispositivo non valida.', 403);
-      const capability = { '/api/device/pair': null, '/api/device/disconnect': null, '/api/device/claim': 'execute', '/api/device/heartbeat': 'execute', '/api/device/result': 'execute', '/api/device/sync': 'sync' };
+      const capability = { '/api/device/pair': null, '/api/device/disconnect': null, '/api/device/claim': 'execute', '/api/device/heartbeat': 'execute', '/api/device/result': 'execute', '/api/device/sync': 'sync', '/api/device/repositories/announce': 'repository', '/api/device/repositories/claim': 'repository', '/api/device/repositories/heartbeat': 'repository', '/api/device/repositories/result': 'repository' };
       if (!Object.hasOwn(capability, pathname)) throw fail('Comando dispositivo non trovato.',404);
       const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1];
       if (pathname !== '/api/device/pair') await devices.authenticate(token, capability[pathname]);
-      const payload = await body(req, pathname === '/api/device/pair' ? 1024 : pathname.endsWith('/sync') ? 8 * 1024 * 1024 : 600000);
+      const payload = await body(req, pathname === '/api/device/pair' ? 1024 : pathname.endsWith('/sync') || pathname === '/api/device/repositories/result' ? 8 * 1024 * 1024 : 600000);
       if (pathname === '/api/device/pair') { json(res, 200, await devices.pair(payload)); return; }
-      if (pathname === '/api/device/disconnect') { const device = await devices.authenticate(token); await devices.mutate('revoke', {id:device.id}); json(res, 200, {ok:true}); return; }
+      if (pathname === '/api/device/disconnect') { const device = await devices.authenticate(token); await devices.mutate('revoke', {id:device.id}); await repositoryDevices.cancelDevice(device.id); json(res, 200, {ok:true}); return; }
+      if (pathname.startsWith('/api/device/repositories/')) {
+        if (closing) throw fail('Il server si sta arrestando. Il lavoro non verrà riavviato automaticamente.', 503);
+        const action = { announce: 'announce', claim: 'claim', heartbeat: 'heartbeat', result: 'finish' }[pathname.split('/').at(-1)];
+        json(res, 200, await repositoryDevices[action](token, payload)); return;
+      }
       if (pathname === '/api/device/claim') { json(res, 200, await devices.claim(token)); return; }
       if (pathname === '/api/device/heartbeat') { json(res, 200, await devices.finish(token, payload, true)); return; }
       if (pathname === '/api/device/result') { json(res, 200, await devices.finish(token, payload)); return; }
@@ -163,6 +189,18 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       const session = await identity.getSession(req);
       if (!session) throw fail('Accedi per continuare.', 401);
+      if (req.method === 'GET' && pathname === '/api/setup') { json(res, 200, await setupSnapshot(req)); return; }
+      if (req.method === 'GET' && pathname === '/api/github') { json(res, 200, await github.snapshot()); return; }
+      if (req.method === 'GET' && pathname === '/api/evaluations') { json(res, 200, await evaluations.snapshot({ scopeId: url.searchParams.get('scopeId') })); return; }
+      if (req.method === 'GET' && pathname === '/api/maintenance/backup') {
+        const file = await maintenance.backupFile({ id: url.searchParams.get('id') });
+        const handle = await open(file.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        let bytes;
+        try { bytes = await handle.readFile(); } finally { await handle.close(); }
+        if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw fail('Il backup è cambiato. Download rifiutato.', 409);
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${file.filename}"`, 'Cache-Control': 'no-store' });
+        res.end(bytes); return;
+      }
       if (req.method === 'GET' && pathname === '/api/access') { json(res, 200, { ...(await identity.getPublicStatus(req)), storage: defaultArchive.info(), ...(await devices.snapshot()), sync: await sync.snapshot() }); return; }
       if (req.method === 'GET' && pathname === '/api/studio') { json(res, 200, { ...(await getState()), provider: await effectiveProviderStatus() }); return; }
       if (req.method === 'GET' && pathname === '/api/workspace') { json(res, 200, await workspaceStore.getSnapshot()); return; }
@@ -181,7 +219,7 @@ const server = createServer(async (req, res) => {
       if (req.method !== 'POST' || !req.headers['content-type']?.startsWith('application/json')) { json(res, 403, { error: 'Richiesta non consentita.' }); return; }
       identity.authorizeMutation(req, session);
       const payload = await body(req, pathname === '/api/memory/preview-import' ? 16 * 1024 * 1024 : pathname === '/api/sources' ? 12 * 1024 * 1024 : 120000);
-      if (pathname === '/api/devices' && payload.action === 'revoke') { json(res, 200, await devices.mutate(payload.action, payload.payload)); return; }
+      if (pathname === '/api/devices' && payload.action === 'revoke') { const result = await devices.mutate(payload.action, payload.payload); await repositoryDevices.cancelDevice(payload.payload.id); json(res, 200, result); return; }
       if (changing || closing) throw fail('Lo studio sta completando un’altra operazione. Riprova tra poco.', 409);
       if (pathname === '/api/chat') {
         changing = true;
@@ -208,9 +246,27 @@ const server = createServer(async (req, res) => {
       }
       changing = true;
       try {
+        if (pathname === '/api/evaluations') {
+          await requireIdle();
+          if (!['saveCase', 'removeCase', 'runCase', 'feedback'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione valutazione non disponibile.');
+          json(res, 200, await evaluations[payload.action](payload.payload)); return;
+        }
+        if (pathname === '/api/github') {
+          await requireIdle();
+          if (!['save', 'disconnect', 'inspect', 'preview', 'publish', 'reconcile'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione GitHub non disponibile.');
+          const result = await github[payload.action](payload.payload);
+          json(res, 200, { result, snapshot: await github.snapshot() }); return;
+        }
+        if (pathname === '/api/maintenance') {
+          await requireIdle();
+          if (payload.action === 'backup') await maintenance.createBackup();
+          else if (payload.action === 'verify') await maintenance.verify();
+          else throw fail('Azione manutenzione non disponibile.');
+          json(res, 200, await setupSnapshot(req)); return;
+        }
         if (pathname === '/api/sources') {
           await requireIdle();
-          if (!['importText', 'importDocument', 'importUrl', 'importFolder', 'refresh', 'remove', 'searchWeb'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione fonti non disponibile.');
+          if (!['importText', 'importDocument', 'importUrl', 'importGitHub', 'importFolder', 'refresh', 'remove', 'searchWeb'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione fonti non disponibile.');
           const controller = new AbortController(); let complete = false;
           res.on('close', () => { if (!complete) controller.abort(); });
           if (res.destroyed) controller.abort();
@@ -240,7 +296,7 @@ const server = createServer(async (req, res) => {
           return;
         }
         if (pathname === '/api/repositories') {
-          if (Object.keys(payload).some(key => !['action', 'payload'].includes(key)) || !['register', 'create', 'start', 'pause', 'approve', 'requestChanges', 'proposeMemory'].includes(payload.action)) throw fail('Azione repository non disponibile.');
+          if (Object.keys(payload).some(key => !['action', 'payload'].includes(key)) || !['register', 'refresh', 'create', 'start', 'pause', 'approve', 'requestChanges', 'proposeMemory'].includes(payload.action)) throw fail('Azione repository non disponibile.');
           if (payload.action !== 'pause') await requireIdle();
           const result = await repositoryWork[payload.action](payload.payload);
           json(res, 200, payload.action === 'proposeMemory' ? { workspace: result, ...await repositoryWork.snapshot() } : result); return;

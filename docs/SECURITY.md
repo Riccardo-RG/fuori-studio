@@ -41,10 +41,12 @@ For a consistent backup:
 1. Pause work and stop the server cleanly.
 2. Run `npm run backup -- /secure/location/studio-backup.sqlite`. An existing destination is never overwritten.
 3. Back up `archive.key` separately, or retain the deployment master key in your secret manager. Recovery requires the matching key.
-4. Restore the database as `studio.sqlite` into a new private directory and supply the matching key. Do not reuse a live directory or copy a running WAL database with ordinary file copy.
+4. Run `npm run restore -- <backup> --into <new-directory>` with the matching external key, or add `--key-file <archive.key>` for a local binary key. The destination must not exist. The CLI verifies records, resets sessions/device grants/sync and disables routines before permitting startup. Do not copy a running WAL database with ordinary file copy.
 5. Start with `FUORI_STUDIO_DATA_DIR=/absolute/restored/path`, verify memories, projects and deliveries, then switch the normal installation.
 
 The backup includes sensitive encrypted data, provider credentials and migration history. Memory export is the safer choice for sharing selected knowledge with another tool. Old backups can retain deleted records or keys; manage retention separately. No managed backup service or secure SSD erasure is claimed.
+
+The owner can also create and download a verified backup from **Accesso → Preparazione** while work is idle. The managed index records up to 30 copies with authenticated metadata; off-server retention remains the operator's responsibility. Restore and backup removal are CLI-only. See [verified recovery](DEPLOYMENT_RECOVERY.md) for drills, separate keys and partial-restore locks.
 
 Corruption and missing/wrong keys fail closed. A crash may leave `server.lock`. Before removing it manually, verify no process uses that directory. Network-mounted shared archives, concurrent server processes and replication of raw SQLite files are unsupported.
 
@@ -56,3 +58,9 @@ Repository checkouts under the private data directory contain plaintext source f
 Source URL requests reject private/local addresses, revalidate redirects, bound body sizes and time, and do not run page JavaScript. Local folder imports are limited to configured or registered repository roots, skip sensitive paths and reject symlinks. Importing a source never grants it instruction authority. Native provider web search sends only the explicitly requested query, uses the existing scope authorization, and exposes provider-returned citations. Source content can be inaccurate even when retrieval succeeded.
 
 AI attempts are reserved durably before dispatch. Daily counts include failures and interruptions; missing token data remains unknown. These are application controls, not a provider billing guarantee.
+
+Repository workers have a capability separate from text execution and synchronization. Their local policies bind aliases, allowed scopes and check commands to the paired studio/device identity. A saved result may be redelivered after a disconnect; edits are never automatically replayed. An authorized worker can read and execute trusted code under its sandbox and is therefore a trust boundary, not merely a transport client.
+
+GitHub tokens are encrypted, write-only account configuration with explicit scope/repository allowlists and a separate publication flag. They are not sent to AI providers, workers, public URL importers or knowledge exports. Only the owner can preview/publish an approved patch. The publisher creates a new branch and draft PR; it has no merge or default-branch update operation. Unknown write outcomes require read-only reconciliation. A GitHub base branch can advance between checks and PR creation; any observed difference is reported for renewed review.
+
+Memory evaluations use owner-supplied labels and ordinary scoped retrieval without AI calls. Stored results contain references, not copied memory text. Case questions and feedback are separately authored private records. They follow encrypted backup retention and are not automatically synchronized or exported as memory.

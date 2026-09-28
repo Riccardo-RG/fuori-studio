@@ -13,10 +13,11 @@ The source service is implemented in strict TypeScript in `lib/sources.ts`, usin
 | Public HTTPS URL | One static document; up to three redirects | Explicit refresh |
 | Public GitHub repository | Public repository metadata | Explicit refresh |
 | Public GitHub issue | Issue title, body, state, and update date | Explicit refresh |
+| Authorized GitHub file | One selected UTF-8 file, pinned to its resolved commit and verified blob | Explicit refresh with current connection permission |
 | Authorized local folder | Supported text files under an explicitly allowed root | Explicit refresh of each imported file |
 | AI web research | A requested search answer with provider-supplied citations | A new explicit search |
 
-There is no automatic site crawler, authenticated browser, private GitHub connector, issue-comment import, OCR, or synchronization with a document provider. Importing a GitHub repository URL does not import its code or README. Local folder import is a snapshot, not a file watcher.
+There is no automatic site crawler, authenticated browser, issue-comment import, OCR, or synchronization with a document provider. Importing a public GitHub repository URL does not import its code or README. For a private file, configure **Progetti → GitHub** and explicitly select the connection, repository, ref and path. Local folder import is a snapshot, not a file watcher.
 
 PDF extraction preserves one-based page references. Other documents preserve one-based line ranges from the extracted text. HTML extraction removes scripts, styles, and markup; it does not render a browser or reproduce the page layout. Scanned PDFs without embedded text require OCR outside this feature.
 
@@ -41,6 +42,8 @@ Before each request and redirect, all DNS answers must be globally routable. Loo
 The reader enforces a 15-second deadline over DNS, redirects, and response transfer; an 8 MiB response limit; supported content types; and at most three redirects. Compressed responses are rejected; the reader requests identity encoding. It never fetches embedded assets or follows links discovered inside a document.
 
 Public GitHub imports use unauthenticated `api.github.com` requests. GitHub's public rate limits apply. They do not inherit the user's GitHub CLI login or OAuth credentials and cannot write to GitHub.
+
+Authenticated GitHub file reads use a separate encrypted connection and fixed GitHub API endpoints. Every read checks the repository and scope allowlists, resolves an immutable commit, traverses ordinary tree entries and validates the blob's SHA-1 against its exact bytes. Files must be UTF-8, no larger than 1 MiB and within the source text limits; symlinks, submodules and sensitive paths are rejected. Metadata includes the repository, commit, blob SHA and path. The stored URL points to that commit, not the moving branch. Refresh requires the connection to remain authorized and creates a new version. Disconnecting blocks future reads; an intentionally imported snapshot is retained until removed or expired. Publication is a separate reviewed workflow, never an import side effect. See [GitHub](GITHUB.md).
 
 ## Local folder boundaries
 
@@ -74,6 +77,7 @@ The service validates saved digests, versions, provenance, dates, citation URLs,
 | `detail({ id, scopeId })` | Metadata, extracted segments, and citation sources |
 | `importText(...)`, `importDocument(...)` | Store an explicit text or uploaded-document snapshot |
 | `importUrl(...)`, `importFolder(...)` | Read an explicit supported URL or authorized folder |
+| `importGitHub(...)` | Import an explicitly authorized file with immutable commit provenance |
 | `refresh({ id, scopeId, version })` | Re-read a supported origin with optimistic concurrency |
 | `remove({ id, scopeId, version })` | Remove live source content and retrieval eligibility |
 | `retrieve({ scopeId, query, limit, maxChars })` | Return bounded current passages from exactly one scope |

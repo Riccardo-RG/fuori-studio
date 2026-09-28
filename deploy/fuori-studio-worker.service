@@ -1,0 +1,40 @@
+[Unit]
+Description=Fuori Studio paired repository worker
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=fuori-studio-worker
+Group=fuori-studio-worker
+WorkingDirectory=/opt/fuori-studio
+StateDirectory=fuori-studio-worker
+StateDirectoryMode=0700
+Environment=FUORI_STUDIO_DEVICE_DIR=/var/lib/fuori-studio-worker/device
+Environment=FUORI_STUDIO_CODEX_BIN=/usr/local/bin/codex
+Environment=CODEX_HOME=/var/lib/fuori-studio-worker/codex
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/node /opt/fuori-studio/scripts/device.mjs run
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=45s
+KillSignal=SIGTERM
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fuori-studio-worker
+# Source checkouts are read-only to the worker; isolated snapshots live in StateDirectory.
+ReadOnlyPaths=/srv/fuori-studio-repositories
+# Do not add RestrictNamespaces, PrivateUsers or a syscall policy without testing
+# the installed Codex sandbox. Sandbox failure must never trigger a bypass.
+MemoryMax=4G
+TasksMax=512
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

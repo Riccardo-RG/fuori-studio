@@ -1,0 +1,99 @@
+name: fuori-studio
+
+services:
+  studio:
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${FUORI_STUDIO_NODE_IMAGE:-node:24-bookworm-slim}
+    image: fuori-studio:local
+    init: true
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 2.0
+    mem_limit: 1g
+    pids_limit: 128
+    stop_grace_period: 45s
+    environment:
+      NODE_ENV: production
+      PORT: "4386"
+      FUORI_STUDIO_BIND: 0.0.0.0
+      FUORI_STUDIO_MODE: hybrid
+      FUORI_STUDIO_DATA_DIR: /data
+      FUORI_STUDIO_PUBLIC_URL: https://${FUORI_STUDIO_DOMAIN:?Set FUORI_STUDIO_DOMAIN to the public hostname}
+      FUORI_STUDIO_OIDC_ISSUER: ${FUORI_STUDIO_OIDC_ISSUER:?Set the HTTPS OIDC issuer}
+      FUORI_STUDIO_OIDC_CLIENT_ID: ${FUORI_STUDIO_OIDC_CLIENT_ID:?Set the OIDC client ID}
+      FUORI_STUDIO_OWNER_SUBJECT: ${FUORI_STUDIO_OWNER_SUBJECT:?Set the owner's immutable OIDC subject}
+      FUORI_STUDIO_OIDC_CLIENT_AUTH: ${FUORI_STUDIO_OIDC_CLIENT_AUTH:-client_secret_basic}
+      FUORI_STUDIO_MASTER_KEY_FILE: /run/secrets/studio_master_key
+      FUORI_STUDIO_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+    secrets:
+      - studio_master_key
+      - oidc_client_secret
+    volumes:
+      - studio_data:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    expose: ["4386"]
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
+      interval: 30s
+      timeout: 8s
+      start_period: 20s
+      retries: 3
+    networks: [studio_network]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  proxy:
+    image: ${FUORI_STUDIO_CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 1.0
+    mem_limit: 256m
+    pids_limit: 64
+    stop_grace_period: 30s
+    depends_on:
+      studio:
+        condition: service_healthy
+    environment:
+      STUDIO_DOMAIN: ${FUORI_STUDIO_DOMAIN:?Set FUORI_STUDIO_DOMAIN to the public hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    networks: [studio_network]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  studio_network:
+    driver: bridge
+
+volumes:
+  studio_data:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  studio_master_key:
+    file: ${FUORI_STUDIO_MASTER_KEY_PATH:?Set the absolute path to the archive key file}
+  oidc_client_secret:
+    file: ${FUORI_STUDIO_OIDC_CLIENT_SECRET_PATH:?Set the absolute path to the OIDC secret file}

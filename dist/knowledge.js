@@ -1,6 +1,7 @@
 import { agents } from './data.js';
 import { scopeIdentity } from './experience-state.js';
 import { icon } from './studio-icons.js';
+import { createEvaluationsPanel } from './evaluations.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const typeNames = { fact:'Informazione', preference:'Preferenza', decision:'Decisione', pattern:'Metodo ricorrente' };
@@ -20,7 +21,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
     <div class="knowledge-heading"><div><div class="eyebrow">IL FILO DEL TUO LAVORO</div><h2 id="knowledge-title">La memoria dello studio.</h2><p>Contesti distinti. Collegamenti scelti da te.</p></div><button type="button" class="knowledge-button" data-action="new-scope" disabled>＋ Nuovo ambito</button></div>
     <div class="knowledge-toolbar"><div class="knowledge-scope-field"><label for="knowledge-scope">Ambito attivo · lo stesso della chat</label><select id="knowledge-scope" disabled><option>Caricamento…</option></select></div><p class="knowledge-scope-note" id="knowledge-scope-note">Le informazioni rimangono nel loro ambito. Puoi rendere disponibili singole note anche altrove.</p></div>
     <section id="memory-assistant" class="memory-assistant" aria-label="Memoria assistita" hidden></section>
-    <div class="memory-transfer-tools"><span>Il tuo archivio</span><button type="button" class="knowledge-text-button" data-action="memory-export">Esporta</button><button type="button" class="knowledge-text-button" data-action="memory-import">Importa</button></div>
+    <div class="memory-transfer-tools"><span>Il tuo archivio</span><button type="button" class="knowledge-text-button" data-action="memory-export">Esporta</button><button type="button" class="knowledge-text-button" data-action="memory-import">Importa</button><button type="button" class="knowledge-text-button" data-action="memory-evaluate" aria-expanded="false" aria-controls="memory-evaluations">Valuta memoria</button></div>
     <div class="knowledge-controls"><div class="knowledge-tabs" role="tablist" aria-label="Archivio dello studio"><button id="knowledge-tab-memories" type="button" role="tab" aria-selected="true" aria-controls="knowledge-results" data-tab="memories">Memoria <span data-count="memories">0</span></button><button id="knowledge-tab-workflows" type="button" role="tab" aria-selected="false" aria-controls="knowledge-results" tabindex="-1" data-tab="workflows">Procedure <span data-count="workflows">0</span></button></div><div class="knowledge-list-actions"><label class="visually-hidden" for="knowledge-search">Cerca nell’ambito attivo</label><input id="knowledge-search" type="search" placeholder="Cerca in questo ambito…" autocomplete="off" maxlength="200"><button type="button" class="knowledge-button is-primary" data-action="new-entry" disabled>＋ Nuova memoria</button></div></div>
     <div id="knowledge-feedback" class="knowledge-feedback" role="status" aria-live="polite">Caricamento della memoria…</div>
     <div id="knowledge-results" class="knowledge-results" role="tabpanel" aria-labelledby="knowledge-tab-memories" tabindex="0"></div>
@@ -28,6 +29,8 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
   const insertion = document.querySelector('.team-section') || document.querySelector('main footer');
   if (insertion) insertion.before(panel);
   else document.querySelector('main')?.append(panel);
+
+  const evaluationHost=document.createElement('section');evaluationHost.id='memory-evaluations';evaluationHost.className='evaluations-panel';evaluationHost.hidden=true;evaluationHost.setAttribute('aria-label','Valutazione della memoria');panel.querySelector('.memory-transfer-tools').after(evaluationHost);
 
   const chatScope = document.createElement('div');
   chatScope.className = 'knowledge-chat-scope';
@@ -51,6 +54,9 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
   const visible = item => item.scopeId === currentScope || isShared(scopeFor(item.scopeId)) || (item.sharedWith || []).includes(currentScope);
   const scopeOptions = (selected, scopes = snapshot.scopes) => scopes.map(scope => `<option value="${escape(scope.id)}"${scope.id === selected ? ' selected' : ''}>${escape(scope.name)}${scope.parentId ? ` · ${escape(scopeName(scope.parentId))}` : ''}</option>`).join('');
 
+  const evaluations=createEvaluationsPanel({host:evaluationHost,toast,onVisibility:value=>panel.querySelector('[data-action="memory-evaluate"]').setAttribute('aria-expanded',String(value))});
+  window.addEventListener('studio-edit-memory',event=>{if(locked())return;const item=snapshot.memories.find(item=>item.id===event.detail?.id);if(item)openMemory(item);else toast('La memoria non è più disponibile. Aggiorna l’archivio.');});
+
   function setSnapshot(value) {
     if (!value || !Array.isArray(value.scopes) || !Array.isArray(value.memories) || !Array.isArray(value.workflows)) throw Error('La memoria ha restituito dati non validi. Riprova.');
     snapshot = value;
@@ -71,6 +77,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
 
   function syncControls() {
     const disabled = locked();
+    evaluations.setBusy(disabled);
     panel.querySelectorAll('[data-action]').forEach(button => { button.disabled = (disabled && button.dataset.action !== 'retry') || button.dataset.readonly === 'true'; });
     $('#knowledge-scope').disabled = disabled;
     chatScope.querySelector('select').disabled = disabled;
@@ -111,6 +118,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
 
   function render() {
     renderAssistant();
+    evaluations.setContext({scopeId:currentScope,scopes:snapshot.scopes,memories:snapshot.memories});
     panel.querySelectorAll('[data-tab]').forEach(button => {
       const selected = button.dataset.tab === activeTab;
       button.setAttribute('aria-selected', String(selected));
@@ -468,6 +476,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
     const action = button.dataset.action;
     if(action==='memory-export'){openMemoryExport();return;}
     if(action==='memory-import'){openMemoryImport();return;}
+    if(action==='memory-evaluate'){evaluations.toggle();return;}
     if(action==='memory-policy'){openMemoryPolicy();return;}
     if(action==='candidate-review'||action==='candidate-reject'){const candidate=snapshot.memoryAssistant?.candidates?.find(item=>item.id===button.dataset.id);if(candidate){if(action==='candidate-review')openCandidate(candidate);else void rejectCandidate(candidate);}return;}
     if(action==='memory-undo'){const actionRecord=snapshot.memoryAssistant?.actions?.find(item=>item.id===button.dataset.id);if(actionRecord)undoMemory(actionRecord);return;}

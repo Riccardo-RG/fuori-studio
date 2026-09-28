@@ -35,7 +35,7 @@ async function fixture(t, overrides = {}) {
     ...overrides.runtime,
   };
   const authorizeExecution = async () => { calls.authorization.push(true); if (overrides.authorizeExecution) return overrides.authorizeExecution(); };
-  const service = createRepositoryWork({ storage, workspace, operations, providers, runtime, mode: overrides.mode || 'local', authorizeExecution });
+  const service = createRepositoryWork({ storage, workspace, operations, providers, runtime, remote: overrides.remote, mode: overrides.mode || 'local', authorizeExecution });
   const register = (extra = {}) => service.register({ projectId: 'owned-project', scopeId: 'business', path: '/trusted/repository', checks: configured, ...extra });
   async function create() { const state = await register(); return (await service.create({ repositoryId: state.repositories[0].id, title: 'Improve feature', brief: 'Implement the requested behavior and verify it.' })).runs.at(-1); }
   return { storage, workspace, operations, providers, runtime, service, calls, register, create };
@@ -212,4 +212,98 @@ test('derived memory validates every persisted editor and reviewer reference bef
   await f.storage.write('repository-work', state);
   await assert.rejects(f.service.proposeMemory({ id: run.id, title: 'Stale implementation', content: 'Do not restore an obsolete editor decision.' }), { code: 'REPOSITORY_CONTEXT_CHANGED' });
   assert.equal((await f.workspace.getSnapshot()).memories.length, 1);
+});
+
+function remoteFixture(overrides = {}) {
+  const requests = [], policyHash = 'c'.repeat(64);
+  const repository = { alias: 'product', name: 'Product', head: base, branch: 'main', dirty: true, remote: null, checks: configured, scopeIds: ['business'], policyHash, workerName: 'Linux worker' };
+  const remote = {
+    catalog: async () => ({ workers: [{ id: 'worker', name: 'Linux worker', online: true, scopeIds: ['business'], repositories: [repository] }] }),
+    inspect: async input => { requests.push(input); if (input.scopeId !== 'business') throw Error('Remote source scope denied'); return repository; },
+    run: async input => { requests.push(input); await input.onProgress({ stage: 'checking' }); return { version: 1, runId: input.runId, baseCommit: base, alias: 'product', policyHash, edited: { text: 'Remote edit', usage: null, durationMs: 10 }, beforeHash: diff().hash, diff: diff(), checks: configured.map(check => ({ ...check, status: 'passed', exitCode: 0, output: 'Passed', durationMs: 2 })) }; },
+    ...overrides,
+  };
+  return { remote, requests, policyHash };
+}
+
+test('hosted repository work uses an explicitly authorized worker and never the host filesystem or text execution target', async t => {
+  const { remote, requests } = remoteFixture();
+  const f = await fixture(t, { mode: 'hybrid', remote, providers: {
+    assertPolicyAllowed: async () => ({ id: 'codex', type: 'codex' }),
+    assertAllowed: async () => { throw Error('No text target configured'); },
+  } });
+  const state = await f.service.register({ projectId: 'owned-project', scopeId: 'business', executionTarget: 'worker', repositoryAlias: 'product' });
+  assert.equal(state.available, true); assert.equal(state.localAvailable, false); assert.equal(state.localOnly, false);
+  const repository = state.repositories[0]; assert.equal(repository.path, 'device:worker/product'); assert.deepEqual(repository.checks, configured);
+  let run = (await f.service.create({ repositoryId: repository.id, title: 'Remote change', brief: 'Improve the owned product.' })).runs[0];
+  await f.service.start({ id: run.id, expectedVersion: run.version });
+  run = (await settled(f.service)).runs[0];
+  assert.equal(run.status, 'review'); assert.equal(run.checks[0].status, 'passed'); assert.equal(run.review.status, 'unavailable');
+  assert.equal(run.editor.deviceId, 'worker'); assert.equal(f.calls.prepare.length, 0); assert.equal(f.calls.edit.length, 0); assert.equal(f.calls.authorization.length, 0);
+  assert.equal(requests.filter(input => input.prompt).length, 1);
+  const approved = (await f.service.approve({ id: run.id, expectedVersion: run.version })).runs[0]; assert.equal(approved.status, 'completed');
+  assert.match((await f.service.patch({ id: run.id })).patch, /\+new/);
+});
+
+test('remote registration cannot grant browser-selected paths or commands and source-scope grants are checked before dispatch', async t => {
+  const { remote, requests } = remoteFixture(); const f = await fixture(t, { mode: 'online', remote });
+  const registration = { projectId: 'owned-project', scopeId: 'business', executionTarget: 'worker', repositoryAlias: 'product' };
+  await assert.rejects(f.service.register({ ...registration, path: '/etc' }));
+  await assert.rejects(f.service.register({ ...registration, checks: configured }));
+  const repository = (await f.service.register(registration)).repositories[0];
+  await f.workspace.mutate('saveMemory', { scopeId: 'personal', title: 'Private decision', content: 'A personal constraint.', type: 'decision', status: 'confirmed', sharedWith: ['business'], agentIds: ['forge'] });
+  const run = (await f.service.create({ repositoryId: repository.id, title: 'Scoped change', brief: 'Use the personal constraint.' })).runs[0];
+  await assert.rejects(f.service.start({ id: run.id, expectedVersion: run.version }), /Remote source scope denied/);
+  assert.equal(requests.filter(input => input.prompt).length, 0);
+});
+
+test('remote receipts require exact run, commit, policy and check evidence before human approval', async t => {
+  for (const change of [receipt => { receipt.baseCommit = head; }, receipt => { receipt.policyHash = 'd'.repeat(64); }, receipt => { receipt.checks = []; }, receipt => { receipt.diff.patch += 'changed'; }]) {
+    const { remote } = remoteFixture(), original = remote.run;
+    remote.run = async input => { const receipt = await original(input); change(receipt); return receipt; };
+    const f = await fixture(t, { mode: 'hybrid', remote });
+    const repository = (await f.service.register({ projectId: 'owned-project', scopeId: 'business', executionTarget: 'worker', repositoryAlias: 'product' })).repositories[0];
+    const run = (await f.service.create({ repositoryId: repository.id, title: 'Remote change', brief: 'Make a change.' })).runs[0];
+    await f.service.start({ id: run.id, expectedVersion: run.version });
+    const result = (await settled(f.service)).runs[0]; assert.equal(result.status, 'failed'); assert.equal(f.calls.review.length, 0);
+    await assert.rejects(f.service.approve({ id: result.id, expectedVersion: result.version }), { code: 'REPOSITORY_APPROVAL_BLOCKED' });
+  }
+});
+
+test('remote policy changes require explicit repository refresh and paused runs reject a late receipt', async t => {
+  const setup = remoteFixture(); const f = await fixture(t, { mode: 'hybrid', remote: setup.remote });
+  let repository = (await f.service.register({ projectId: 'owned-project', scopeId: 'business', executionTarget: 'worker', repositoryAlias: 'product' })).repositories[0];
+  const changed = { ...await setup.remote.inspect({ scopeId: 'business' }), policyHash: 'd'.repeat(64), checks: [{ label: 'New test', program: 'npm', args: ['run', 'test:offline'] }] };
+  setup.remote.inspect = async () => changed;
+  await assert.rejects(f.service.create({ repositoryId: repository.id, title: 'Change', brief: 'Change it.' }), { code: 'REPOSITORY_POLICY_CHANGED' });
+  repository = (await f.service.refresh({ id: repository.id, expectedVersion: repository.version })).repositories[0]; assert.deepEqual(repository.checks, changed.checks);
+  let resolveReceipt, signal;
+  setup.remote.run = async input => { signal = input.signal; return new Promise(resolve => { resolveReceipt = resolve; }); };
+  let run = (await f.service.create({ repositoryId: repository.id, title: 'Change', brief: 'Change it.' })).runs[0];
+  await f.service.start({ id: run.id, expectedVersion: run.version });
+  for (let i = 0; i < 1000 && !resolveReceipt; i++) await setImmediate();
+  assert.ok(resolveReceipt);
+  run = (await f.service.snapshot()).runs[0];
+  await f.service.pause({ id: run.id, expectedVersion: run.version }); assert.equal(signal.aborted, true);
+  resolveReceipt({});
+  assert.equal((await settled(f.service)).runs[0].status, 'paused');
+});
+
+
+test('publication candidates require current human approval, valid checks and the exact persisted patch', async t => {
+  const f = await fixture(t), queued = await f.create();
+  await assert.rejects(f.service.approvedPublication({ id: queued.id }), { code: 'REPOSITORY_APPROVAL_BLOCKED' });
+  await f.service.start({ id: queued.id, expectedVersion: queued.version });
+  const run = (await settled(f.service)).runs[0];
+  await assert.rejects(f.service.approvedPublication({ id: run.id }), { code: 'REPOSITORY_APPROVAL_BLOCKED' });
+  const approved = (await f.service.approve({ id: run.id, expectedVersion: run.version })).runs[0];
+  const candidate = await f.service.approvedPublication({ id: run.id });
+  assert.equal(candidate.patch, patchText); assert.equal(candidate.patchHash, run.patchHash); assert.equal(candidate.version, approved.version);
+  assert.equal(candidate.path, undefined); assert.equal(candidate.configuration, undefined);
+  const artifact = await f.storage.read(`repository-work/patch/${run.id}`);
+  await f.storage.write(`repository-work/patch/${run.id}`, { ...artifact, patch: artifact.patch + 'changed' });
+  await assert.rejects(f.service.approvedPublication({ id: run.id }), { code: 'REPOSITORY_PATCH_INVALID' });
+  await f.storage.write(`repository-work/patch/${run.id}`, artifact);
+  await f.service.requestChanges({ id: run.id, expectedVersion: approved.version, feedback: 'Revise before publishing.' });
+  await assert.rejects(f.service.approvedPublication({ id: run.id }), { code: 'REPOSITORY_APPROVAL_BLOCKED' });
 });

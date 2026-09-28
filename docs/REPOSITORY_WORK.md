@@ -1,6 +1,6 @@
 # Repository work
 
-Fuori Studio can turn a development brief into an isolated code change, execute configured checks, request an independent AI review, and present the resulting patch for human approval. This is an explicit local workflow under **Projects → Repository**, separate from ordinary text chat.
+Fuori Studio can turn a development brief into an isolated code change, execute configured checks, request an independent AI review, and present the resulting patch for human approval. Use **Projects → Repository** on the local installation or select an explicitly authorized repository worker from a hosted studio. This workflow is separate from ordinary text chat.
 
 ## First project
 
@@ -15,7 +15,7 @@ Fuori Studio can turn a development brief into an isolated code change, execute 
 
 ## Evidence, not generated claims
 
-Big Fonz is the editing role and must use the built-in local Codex connection. Riccardo is the reviewer and uses his separately configured connection. An API connection can review the supplied text but cannot edit the repository through this workflow. Both roles must be authorized for the project scope and every inherited memory source.
+Big Fonz is the editing role and must use the built-in Codex connection, executed locally or by the selected repository worker. Riccardo is the reviewer and uses his separately configured text connection. An API connection can review the supplied text but cannot edit the repository through this workflow. Both roles must be authorized for the project scope and every inherited memory source. A repository worker does not require a text-execution grant; its local policy, scopes and check manifest are independent.
 
 The editor's summary, the process results, and the AI review are separate records. A model saying “tests passed” is not a successful check. Approval requires a nonempty captured patch and successful configured checks. If the checks change the candidate patch, their evidence cannot be reused to approve a different change. A missing or failed AI review is displayed explicitly and does not replace the check requirements; the owner can still approve a complete patch whose configured checks passed. Each original editor/reviewer context reference is validated before reuse, so a newer retrieval cannot conceal stale provenance.
 
@@ -33,7 +33,7 @@ Use the local filesystem for trusted proprietary source. Sandboxing and an isola
 
 ## Current boundaries
 
-- Repository work runs only on the local installation. Remote sessions and paired text workers do not gain filesystem access through their existing tokens.
+- Remote repository execution requires its own device capability and a locally registered alias, scope allowlist and check manifest. Existing text or sync tokens do not grant repository access. See [remote execution](REMOTE_EXECUTION.md).
 - The workflow uses the committed baseline. Changes in the owner's working directory are preserved and excluded.
 - No network installation, Git push, GitHub authentication, pull request creation or merge occurs automatically. The reviewed patch is the handoff artifact for the normal repository review process.
 - This repository workflow does not crawl issues, research the web or poll CI. Its editor and optional reviewer consume the shared AI call budget; actual monetary charges are not capped by that counter.
@@ -42,6 +42,8 @@ Use the local filesystem for trusted proprietary source. Sandboxing and an isola
 ## Interfaces
 
 `lib/repository-runtime.mjs` handles Git snapshots, bounded processes, sandboxed editing/checks and patch capture. `lib/repository-work.mjs` owns the durable lifecycle, context authorization, review and memory handoff. Both accept injected dependencies for tests. The browser panel consumes the authenticated HTTP endpoints documented in [API](API.md).
+
+`lib/repository-devices.ts` owns scoped leases and authenticated receipts on the studio. `lib/repository-worker.ts` owns the local repository policy and durable delivery journal. A disconnected worker retries delivery of a saved result; it never reruns a paid edit automatically. The authorized worker is a trust boundary: receipt hashes detect inconsistency, but do not independently prove that a compromised worker executed its reported commands.
 
 Official Codex references consulted: [non-interactive execution](https://learn.chatgpt.com/docs/non-interactive-mode) and [security](https://learn.chatgpt.com/docs/security). Installed CLI help is checked for the actual available sandbox flags; a documentation example is not treated as proof that a runtime works on a particular host.
 

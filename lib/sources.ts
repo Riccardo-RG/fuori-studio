@@ -18,8 +18,11 @@ export interface SourceMetadata {
   id: string; scopeId: string; kind: SourceKind; title: string; filename: string | null; url: string | null;
   version: number; digest: string; createdAt: string; retrievedAt: string; staleAt: string | null;
   status: 'current' | 'stale'; bytes: number; segmentCount: number; untrusted: true; refreshable: boolean;
+  github?: { repository: string; commit: string; blobSha: string; path: string };
 }
-interface Origin { type: 'manual' | 'url' | 'file'; path?: string; url?: string; }
+export interface GitHubSourceInput { scopeId: string; connectionId: string; repository: string; ref: string; path: string; title?: string; signal?: AbortSignal; }
+export interface GitHubSourceFile { text: string; commit: string; blobSha: string; path: string; repository: string; url: string; }
+interface Origin { type: 'manual' | 'url' | 'file' | 'github-file'; path?: string; url?: string; connectionId?: string; repository?: string; ref?: string; }
 interface SourceRecord extends Omit<SourceMetadata, 'status' | 'segmentCount' | 'untrusted' | 'refreshable'> { segments: SourceSegment[]; citationSources: Citation[]; origin: Origin; }
 interface SourceState { version: 1; records: SourceRecord[]; }
 export interface SourceDetail { source: SourceMetadata; segments: SourceSegment[]; citationSources: Citation[]; }
@@ -29,6 +32,7 @@ export interface SourceOptions {
   storage: SourceStorage; workspace: SourceWorkspace; mode?: 'local' | 'online' | 'hybrid';
   allowedRoots?: string[] | (() => Promise<string[]>);
   search?: (input: ResearchInput) => Promise<ResearchResult>;
+  github?: (input: GitHubSourceInput) => Promise<GitHubSourceFile>;
   resolveHost?: (hostname: string) => Promise<PinnedAddress[]>;
   transport?: (url: URL, address: PinnedAddress, options: { maxBytes: number; signal: AbortSignal }) => Promise<UrlResponse>;
   now?: () => number; maxDocumentBytes?: number; maxTextChars?: number; maxRecords?: number; requestTimeoutMs?: number;
@@ -121,11 +125,16 @@ function validateState(value: unknown): SourceState {
   for (const item of value.records) {
     if (!record(item) || typeof item.id !== 'string' || ids.has(item.id) || !Number.isSafeInteger(item.version) || Number(item.version) < 1 || !Array.isArray(item.segments) || item.segments.length > MAX_SEGMENTS || !Array.isArray(item.citationSources) || !record(item.origin)) throw fail('Fonte archiviata non valida.', 'SOURCE_ARCHIVE_INVALID', 503);
     identifier(item.id); identifier(item.scopeId); bounded(item.title, 200, 'Titolo');
-    if (!['text', 'document', 'url', 'folder-file', 'github', 'research'].includes(String(item.kind)) || !['manual', 'url', 'file'].includes(String(item.origin.type)) || typeof item.digest !== 'string' || !/^[a-f0-9]{64}$/.test(item.digest) || !Number.isSafeInteger(item.bytes) || Number(item.bytes) < 0) throw fail('Metadati fonte non validi.', 'SOURCE_ARCHIVE_INVALID', 503);
+    if (!['text', 'document', 'url', 'folder-file', 'github', 'research'].includes(String(item.kind)) || !['manual', 'url', 'file', 'github-file'].includes(String(item.origin.type)) || typeof item.digest !== 'string' || !/^[a-f0-9]{64}$/.test(item.digest) || !Number.isSafeInteger(item.bytes) || Number(item.bytes) < 0) throw fail('Metadati fonte non validi.', 'SOURCE_ARCHIVE_INVALID', 503);
     for (const date of [item.createdAt, item.retrievedAt, ...(item.staleAt === null ? [] : [item.staleAt])]) if (typeof date !== 'string' || !Number.isFinite(Date.parse(date)) || date !== new Date(date).toISOString()) throw fail('Data fonte non valida.', 'SOURCE_ARCHIVE_INVALID', 503);
     if (item.filename !== null) safeFilename(item.filename);
     if (item.url !== null) publicUrl(item.url);
     if (item.origin.type === 'url') publicUrl(item.origin.url);
+    if (item.origin.type === 'github-file') {
+      identifier(item.origin.connectionId);
+      if (!record(item.github) || item.kind !== 'github' || item.origin.repository !== item.github.repository || item.origin.path !== item.github.path || typeof item.github.repository !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(item.github.repository) || typeof item.github.commit !== 'string' || !/^[a-f0-9]{40}$/.test(item.github.commit) || typeof item.github.blobSha !== 'string' || !/^[a-f0-9]{40}$/.test(item.github.blobSha) || typeof item.github.path !== 'string' || forbidden(item.github.path)) throw fail('Provenienza GitHub non valida.', 'SOURCE_ARCHIVE_INVALID', 503);
+      bounded(item.origin.ref, 255, 'Riferimento GitHub');
+    }
     if (item.origin.type === 'file' && (typeof item.origin.path !== 'string' || !isAbsolute(item.origin.path) || forbidden(item.origin.path))) throw fail('Origine locale non valida.', 'SOURCE_ARCHIVE_INVALID', 503);
     if (item.citationSources.length > 100) throw fail('Troppe citazioni.', 'SOURCE_ARCHIVE_INVALID', 503);
     for (const citation of item.citationSources) { if (!record(citation)) throw fail('Citazione non valida.'); publicUrl(citation.url); bounded(citation.title, 500, 'Titolo citazione'); }
@@ -140,7 +149,7 @@ function validateState(value: unknown): SourceState {
   return value as unknown as SourceState;
 }
 
-export function createSourceStore({ storage, workspace, mode = 'local', allowedRoots = [], search, resolveHost = defaultResolve, transport = defaultTransport, now = Date.now, maxDocumentBytes = 8 * 1024 * 1024, maxTextChars = 600000, maxRecords = 300, requestTimeoutMs = 15000 }: SourceOptions) {
+export function createSourceStore({ storage, workspace, mode = 'local', allowedRoots = [], search, github, resolveHost = defaultResolve, transport = defaultTransport, now = Date.now, maxDocumentBytes = 8 * 1024 * 1024, maxTextChars = 600000, maxRecords = 300, requestTimeoutMs = 15000 }: SourceOptions) {
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(operation: () => Promise<T>): Promise<T> => { const result = queue.then(operation); queue = result.catch(() => {}); return result; };
   const load = async () => validateState(await storage.read(KEY, { version: 1, records: [] }));
@@ -158,6 +167,19 @@ export function createSourceStore({ storage, workspace, mode = 'local', allowedR
     return { id: randomUUID(), scopeId: input.scopeId, kind: input.kind, title: bounded(input.title, 200, 'Titolo'), filename: input.filename || null, url: input.url || null, version: 1, digest: digest(JSON.stringify(input.segments.map(({ text, page, lineStart, lineEnd }) => ({ text, page, lineStart, lineEnd })))), createdAt: retrievedAt, retrievedAt, staleAt: input.origin.type === 'manual' ? null : new Date(now() + 7 * 86400000).toISOString(), bytes: input.bytes, segments: input.segments, origin: input.origin, citationSources: input.citationSources || [] };
   }
   async function store(source: SourceRecord): Promise<SourceDetail> { return serial(async () => { const state = await load(); state.records.push(source); await save(state); return detail(source); }); }
+  async function fromGitHub(input: GitHubSourceInput): Promise<SourceRecord> {
+    if (!github) throw fail('Collegamento GitHub autenticato non configurato.', 'SOURCE_GITHUB_UNAVAILABLE', 409);
+    identifier(input.connectionId); bounded(input.ref, 255, 'Riferimento GitHub');
+    if (typeof input.path !== 'string' || !input.path || input.path.length > 1000 || input.path.startsWith('/') || /[\\\0\r\n]/.test(input.path) || input.path.split('/').some(part => !part || part === '.' || part === '..') || forbidden(input.path) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repository)) throw fail('Percorso GitHub non consentito.', 'SOURCE_GITHUB_PATH_DENIED', 403);
+    const result = await github(input);
+    if (!result || result.path !== input.path || result.repository.toLowerCase() !== input.repository.toLowerCase() || !/^[a-f0-9]{40}$/.test(result.commit) || !/^[a-f0-9]{40}$/.test(result.blobSha) || typeof result.text !== 'string' || result.text.includes('\0') || result.text.length > maxTextChars) throw fail('La fonte GitHub non è verificabile.', 'SOURCE_GITHUB_INVALID', 409);
+    const bytes = Buffer.from(result.text, 'utf8');
+    if (createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') !== result.blobSha) throw fail('Il contenuto non corrisponde al blob GitHub.', 'SOURCE_GITHUB_INVALID', 409);
+    const url = `https://github.com/${result.repository}/blob/${result.commit}/${result.path.split('/').map(encodeURIComponent).join('/')}`;
+    const source = make({ scopeId: input.scopeId, kind: 'github', title: input.title || `${result.repository}: ${result.path}`, filename: safeFilename(basename(result.path)), url, segments: segmentsFromText(result.text), bytes: bytes.length, origin: { type: 'github-file', connectionId: input.connectionId, repository: result.repository, ref: input.ref, path: result.path } });
+    source.github = { repository: result.repository, commit: result.commit, blobSha: result.blobSha, path: result.path };
+    return source;
+  }
   async function extract(data: Buffer, mimeType: string, filename?: string, signal?: AbortSignal): Promise<SourceSegment[]> {
     if (data.length > maxDocumentBytes) throw fail('Documento troppo grande.', 'SOURCE_TOO_LARGE', 413);
     if (mimeType === 'application/pdf' || filename?.toLowerCase().endsWith('.pdf')) { if (!data.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw fail('Il file non è un PDF valido.'); return pdfSegments(data, maxTextChars, signal); }
@@ -242,6 +264,7 @@ export function createSourceStore({ storage, workspace, mode = 'local', allowedR
     { id: 'documents', name: 'Documenti', enabled: true, readOnly: true, capabilities: ['text', 'markdown', 'pdf-pages'], limitations: 'PDF con testo incorporato; nessun OCR o esecuzione di contenuti.' },
     { id: 'web', name: 'Pagine HTTPS', enabled: true, readOnly: true, capabilities: ['single-url', 'refresh'], limitations: 'Pagine pubbliche statiche; nessun login, browser o crawling automatico.' },
     { id: 'github', name: 'GitHub pubblico', enabled: true, readOnly: true, capabilities: ['repository-metadata', 'issue-body', 'refresh'], limitations: 'Nessuna credenziale; nessuna scrittura, repository privato o importazione implicita di commenti.' },
+    { id: 'github-private', name: 'File GitHub autorizzati', enabled: Boolean(github), readOnly: true, capabilities: ['selected-file', 'commit-provenance', 'refresh'], limitations: 'File di testo selezionati, con ambiti e repository autorizzati. La copia importata rimane fino a rimozione o scadenza; revocare una connessione impedisce nuove letture.' },
     { id: 'folders', name: 'Cartelle autorizzate', enabled: mode === 'local', readOnly: true, capabilities: ['selected-folder', 'text-files', 'refresh'], limitations: 'Solo radici configurate; file sensibili, dipendenze e collegamenti esclusi.' },
     { id: 'research', name: 'Ricerca web AI', enabled: Boolean(search), readOnly: true, capabilities: ['opt-in-query', 'citations'], limitations: 'Richiede una connessione OpenAI API autorizzata; ogni ricerca è esplicita e può avere un costo.' },
   ];
@@ -252,6 +275,7 @@ export function createSourceStore({ storage, workspace, mode = 'local', allowedR
     importText: async ({ scopeId, title, text, filename }: { scopeId: string; title: string; text: string; filename?: string }) => { await scope(scopeId); const content = bounded(text, maxTextChars, 'Testo'); return store(make({ scopeId, kind: 'text', title, filename: filename ? safeFilename(filename) : null, segments: segmentsFromText(content), bytes: Buffer.byteLength(content), origin: { type: 'manual' } })); },
     importDocument: async ({ scopeId, title, filename, mimeType, dataBase64, signal }: { scopeId: string; title: string; filename: string; mimeType: string; dataBase64: string; signal?: AbortSignal }) => { await scope(scopeId); safeFilename(filename); if (typeof dataBase64 !== 'string' || dataBase64.length > Math.ceil(maxDocumentBytes / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(dataBase64)) throw fail('Documento codificato non valido o troppo grande.', 'SOURCE_TOO_LARGE', 413); const data = Buffer.from(dataBase64, 'base64'); if (data.toString('base64') !== dataBase64) throw fail('Codifica documento non valida.'); return store(make({ scopeId, kind: 'document', title, filename, segments: await extract(data, mimeType, filename, signal), bytes: data.length, origin: { type: 'manual' } })); },
     importUrl: async (input: { scopeId: string; url: string; title?: string; signal?: AbortSignal }) => { await scope(input.scopeId); return store(await fromUrl(input)); },
+    importGitHub: async (input: GitHubSourceInput) => { await scope(input.scopeId); return store(await fromGitHub(input)); },
     importFolder: async ({ scopeId, path }: { scopeId: string; path: string }) => {
       await scope(scopeId); const folder = await allowedPath(path); if (!(await lstat(folder)).isDirectory()) throw fail('Seleziona una cartella.');
       const imported: SourceRecord[] = [], skipped: Array<{ path: string; reason: string }> = []; let count = 0, total = 0;
@@ -272,7 +296,7 @@ export function createSourceStore({ storage, workspace, mode = 'local', allowedR
     },
     refresh: async ({ id, scopeId, version, signal }: { id: string; scopeId: string; version: number; signal?: AbortSignal }) => {
       await scope(scopeId); const source = await serial(async () => clone(find(await load(), id, scopeId))); checkVersion(source, version);
-      const refreshed = source.origin.type === 'url' && source.origin.url ? await fromUrl({ scopeId, url: source.origin.url, title: source.title, signal }) : source.origin.type === 'file' && source.origin.path ? await fromFile(scopeId, source.origin.path, source.title) : null;
+      const refreshed = source.origin.type === 'url' && source.origin.url ? await fromUrl({ scopeId, url: source.origin.url, title: source.title, signal }) : source.origin.type === 'file' && source.origin.path ? await fromFile(scopeId, source.origin.path, source.title) : source.origin.type === 'github-file' ? await fromGitHub({ scopeId, connectionId: source.origin.connectionId!, repository: source.origin.repository!, ref: source.origin.ref!, path: source.origin.path!, title: source.title, signal }) : null;
       if (!refreshed) throw fail('Per aggiornare questo documento, importa una nuova versione.', 'SOURCE_NOT_REFRESHABLE', 409);
       return serial(async () => { const state = await load(), current = find(state, id, scopeId); checkVersion(current, version); Object.assign(current, refreshed, { id: source.id, version: source.version + 1, createdAt: source.createdAt }); await save(state); return detail(current); });
     },

@@ -24,6 +24,10 @@ server.mjs — identity/CSRF enforcement, request validation, configuration lock
           ├─ providers.mjs — credentials, policy, normalized model responses
           │      └─ codex.mjs — local Codex process adapter
           ├─ repository-work.mjs / repository-runtime.mjs — isolated code and captured checks
+          ├─ repository-devices.ts / repository-worker.ts — scoped remote work and durable receipts
+          ├─ github.ts / github-patch.ts — fixed-host account access and exact reviewed publication
+          ├─ deployment.ts / maintenance.ts — readiness, secret mounts and verified backups
+          ├─ memory-evaluations.ts — owner-labeled retrieval measurements and feedback
           ├─ plans.ts / governance.ts — dependencies, call reservations and measured outcomes
           ├─ sources.ts — bounded source ingestion, provenance and retrieval
           ├─ identity.mjs / devices.mjs — owner sessions and paired execution
