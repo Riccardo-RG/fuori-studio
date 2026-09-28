@@ -52,9 +52,13 @@ test('registration is local-only, project-scoped and requires explicitly allowed
   await assert.rejects(f.register({ checks: [] }));
   await assert.rejects(f.register({ checks: [{ label: 'Install', program: 'npm', args: ['install'] }] }));
   await assert.rejects(f.register({ checks: [{ label: 'Shell', program: 'sh', args: ['-c', 'anything'] }] }));
+  for (const program of ['npm', 'pnpm', 'yarn']) await assert.rejects(f.register({ checks: [{ label: 'Invalid script option', program, args: ['run', '--prefix'] }] }));
   const result = await f.register();
   assert.equal(result.available, true); assert.equal(result.localOnly, true); assert.equal(result.repositories[0].dirty, true);
   await assert.rejects(f.register(), { code: 'REPOSITORY_EXISTS' });
+  const scripts = await fixture(t);
+  const scriptChecks = ['npm', 'pnpm', 'yarn'].map(program => ({ label: `${program} offline tests`, program, args: ['run', 'test:offline'] }));
+  assert.deepEqual((await scripts.register({ checks: scriptChecks })).repositories[0].checks, scriptChecks);
   const remote = await fixture(t, { mode: 'hybrid' });
   assert.equal((await remote.service.snapshot()).available, false);
   await assert.rejects(remote.register(), { code: 'REPOSITORY_LOCAL_ONLY' });
