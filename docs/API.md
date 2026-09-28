@@ -166,6 +166,12 @@ Repository workers use these separate token-authenticated POST routes:
 
 Only `repository` capability accepts them. Results allow an 8 MiB request and carry the exact run, alias, policy hash, base commit, check manifest, patch and usage. A 30-second lease must be renewed; execution is bounded to thirty minutes. Delivery of the same completed receipt can be retried for twenty-four hours. A revoked device, expired lease or different result cannot complete the job. There is no reassignment or automatic edit retry. See [the worker protocol](REMOTE_EXECUTION.md).
 
+## Learning reusable workflows
+
+`POST /api/workflows/learn {action,payload}` requires owner mutation authorization and an idle studio. `preview` accepts `{taskId,expectedVersion}` and returns `{origin,truncated,workflow}` without saving anything or calling an AI service. Only the latest approved text delivery of a completed task qualifies. Brief and step instructions become editable workflow fields; model outputs, documents and memory contents are not copied.
+
+`save` accepts `{taskId,expectedVersion,workflow:{title,description,input,output,steps,status}}` and returns `{snapshot,workflowId}`. Steps contain `{title,agentId,output}`; status is `draft` or `ready`. The server rechecks approval, task version and original context references. Restricted, unavailable or changed context blocks derivation. Scope and provenance are server assigned, and initial sharing is empty. Submitted scope, sharing, source or existing workflow identifiers are rejected. The resulting record uses the existing versioned workflow store and portability format. See [reusable workflows](PRODUCTIVITY.md).
+
 ## Maintenance
 
 `POST /api/maintenance {action:"backup"|"verify"}` requires the owner's mutation authorization and an idle studio. It returns the setup snapshot. `verify` checks the current archive; `backup` creates a new encrypted SQLite snapshot and verifies its records before recording the file digest. Neither action performs a restore.
@@ -219,10 +225,13 @@ Authenticated GitHub file import uses a separately configured connection, reposi
 save       { id?, expectedVersion?, name, token?, scopeIds, repositories, allowPublish }
 disconnect { id, expectedVersion }
 inspect    { connectionId, scopeId, repository }
+checks     { connectionId, scopeId, repository, ref }
 preview    { runId, connectionId, repository, baseBranch, title, body }
 publish    { id, expectedVersion }
 reconcile  { id, expectedVersion }
 ```
+
+`checks` returns an ephemeral `{repository,ref,commitSha,fetchedAt,state,complete,checks,errors}` result. Each check includes `{id,source,name,state,url?}`. Missing results remain distinct from success; unavailable or truncated groups set `complete:false`. It performs at most three fixed-host GET requests and never starts or reruns a workflow. See [GitHub checks](GITHUB_CHECKS.md).
 
 Repository names use `owner/repository`. Tokens are write-only, and publication permission is independent of read access. Preview requires a currently approved run, complete checks and the exact GitHub base; it makes no external writes. Publish creates an isolated branch and draft PR after explicit confirmation. Reconcile reads remote state after an uncertain result; it does not blindly resend writes. GitHub cannot atomically pin a PR's target branch against concurrent changes, so an advanced base is reported for renewed review. No merge endpoint is exposed. See [GitHub operation](GITHUB.md).
 

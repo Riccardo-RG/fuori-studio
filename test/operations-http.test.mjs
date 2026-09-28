@@ -76,6 +76,19 @@ process.stdin.on('end', () => {
   const proposal = (await request('/api/tasks/memory', { id: task.id, title: 'Approved reusable criterion', content: 'Review measurable criteria.', type: 'pattern' })).memories.at(-1);
   assert.equal(proposal.status, 'proposed'); assert.deepEqual(proposal.agentIds, ['forge']);
 
+  // Learning cannot broaden a delivery's restricted memory permissions.
+  await request('/api/workflows/learn',{action:'preview',payload:{taskId:task.id,expectedVersion:task.version}},409);
+  const learningProject=(await mutate('createProject',{title:'Learning fixture',scopeId:'development',kind:'owned'})).projects.at(-1);
+  let learningTask=(await mutate('createTask',{projectId:learningProject.id,title:'Reusable method',brief:'Review acceptance criteria.',agentId:'forge'})).tasks.at(-1);
+  await request('/api/tasks/run',{id:learningTask.id,expectedVersion:learningTask.version});learningTask=await readyTask(learningTask.id);
+  learningTask=(await mutate('approveTask',{id:learningTask.id,expectedVersion:learningTask.version})).tasks.find(item=>item.id===learningTask.id);
+  const learnInput={taskId:learningTask.id,expectedVersion:learningTask.version},preview=await request('/api/workflows/learn',{action:'preview',payload:learnInput});
+  const {scopeId:ignoredScope,source:ignoredSource,sharedWith:ignoredSharing,...recipe}=preview.workflow;
+  const learned=await request('/api/workflows/learn',{action:'save',payload:{...learnInput,workflow:{...recipe,status:'ready'}}});
+  const savedRecipe=learned.snapshot.workflows.find(item=>item.id===learned.workflowId);assert.equal(savedRecipe.scopeId,'development');assert.deepEqual(savedRecipe.sharedWith,[]);
+  const repeated=(await mutate('createTask',{projectId:learningProject.id,title:'Use reviewed workflow',brief:'New materials.',workflowId:learned.workflowId})).tasks.at(-1);
+  assert.equal(repeated.status,'queued');assert.equal(repeated.steps[0].instruction,savedRecipe.steps[0].output);
+
   const secret = 'fixture-api-secret-not-for-public-responses';
   const publicProviders = await request('/api/providers', { action: 'saveConnection', payload: { name: 'Fixture OpenAI', type: 'openai', model: 'fixture-model', apiKey: secret } });
   assert.ok(!JSON.stringify(publicProviders).includes(secret));

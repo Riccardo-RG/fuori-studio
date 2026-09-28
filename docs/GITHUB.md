@@ -26,6 +26,8 @@ GitHub documents the underlying [Git blob API](https://docs.github.com/en/rest/g
 
 ## Publish a reviewed change
 
+Read existing CI outcomes through **Risultati test / Test results** on a connection or published PR. The viewer resolves a branch or tag to an exact commit and shows check runs and commit statuses, including partial and missing results. It does not dispatch workflows or determine merge eligibility. See [test results](GITHUB_CHECKS.md) for read permissions and limits. Workflow execution still depends on the repository's configured [GitHub Actions events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
+
 1. Register the project repository locally or through a paired worker. For a private repository, first prepare its trusted checkout and dependencies on that computer using your normal Git workflow. The worker keeps its own local authorization; the web connector does not transmit a token to that checkout.
 2. Run the assignment in its isolated repository environment. Inspect the complete patch and the actual configured check results. Approve the result in the studio. An unapproved result, failed/truncated check, changed patch or stale approval cannot be published.
 3. Choose **Prepara PR** for the approved run. Select an allowed GitHub connection, repository and base branch, and review the exact title and body. Preparation reads GitHub but creates no Git objects, branches or pull requests. The branch's current commit must match the run's tested base.

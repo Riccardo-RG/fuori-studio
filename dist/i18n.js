@@ -1,10 +1,12 @@
+import githubChecks from './locales/github-checks.en.js';
+import productivity from './locales/productivity.en.js';
 import core from './locales/core.en.js';
 import workspace from './locales/workspace.en.js';
 import workflows from './locales/workflows.en.js';
 import experience from './locales/experience.en.js';
 
 // Source-language keys are application copy, never values read from the archive.
-export const english = Object.freeze({...core, ...workspace, ...workflows, ...experience});
+export const english = Object.freeze({...githubChecks, ...productivity, ...core, ...workspace, ...workflows, ...experience});
 export const LANGUAGE_KEY = 'fuori-studio-language';
 export const languages = Object.freeze(['it', 'en']);
 const listeners = new Set(), bindings = new Map();

@@ -1,3 +1,4 @@
+import { createWorkflowLearning } from './lib/workflow-learning.ts';
 import { createTeamStore } from './lib/team.ts';
 import { applyAgentNames } from './dist/data.js';
 import { createServer } from 'node:http';
@@ -59,6 +60,7 @@ const repositoryWork = createRepositoryWork({
   },
 });
 const github = createGitHub({ storage: defaultArchive, workspace: workspaceStore, approvedRun: input => repositoryWork.approvedPublication(input) });
+const workflowLearning = createWorkflowLearning({operations:operationsStore,workspace:workspaceStore});
 const team = createTeamStore({storage:defaultArchive});
 const evaluations = createMemoryEvaluations({ storage: defaultArchive, workspace: workspaceStore });
 const sources = createSourceStore({
@@ -257,9 +259,14 @@ const server = createServer(async (req, res) => {
         }
         if (pathname === '/api/github') {
           await requireIdle();
-          if (!['save', 'disconnect', 'inspect', 'preview', 'publish', 'reconcile'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione GitHub non disponibile.');
+          if (!['save', 'disconnect', 'inspect', 'preview', 'publish', 'reconcile', 'checks'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione GitHub non disponibile.');
           const result = await github[payload.action](payload.payload);
           json(res, 200, { result, snapshot: await github.snapshot() }); return;
+        }
+        if (pathname === '/api/workflows/learn') {
+          await requireIdle();
+          if (!['preview','save'].includes(payload.action)) throw fail('Azione procedura non disponibile.');
+          json(res,200,await workflowLearning[payload.action](payload.payload)); return;
         }
         if (pathname === '/api/team') { await requireIdle(); const value=await team.rename(payload); applyAgentNames(value.names); json(res,200,value); return; }
         if (pathname === '/api/maintenance') {

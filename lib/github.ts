@@ -11,6 +11,7 @@ type Stage = 'tree' | 'commit' | 'branch' | 'pull_request';
 type Publication = { id: string; version: number; status: 'preview' | 'publishing' | 'published' | 'uncertain'; runId: string; scopeId: string; connectionId: string; repository: string; baseBranch: string; baseCommit: string; patchHash: string; candidateDigest: string; files: File[]; title: string; body: string; branch: string; createdAt: string; url?: string; error?: string; stage?: Stage; treeSha?: string; commitSha?: string; actualBaseCommit?: string; baseChanged?: boolean; pullRequested?: boolean; rejected?: boolean };
 type Candidate = { version: 1; runVersion: number; connectionVersion: number; baseTree: string; entries: Entry[]; patchHash: string };
 type State = { version: 1; connections: Connection[]; publications: Publication[] };
+type CheckResult = { id: string; source: 'check_run' | 'commit_status'; name: string; state: string; url?: string };
 export type GitHubOptions = { storage: Storage; workspace: Workspace; approvedRun(input: { id: string }): Promise<ApprovedRun>; transport?: typeof fetch; now?: () => number; requestTimeoutMs?: number };
 const KEY = 'github', API = 'https://api.github.com', SHA = /^[a-f0-9]{40}$/, HASH = /^[a-f0-9]{64}$/;
 const MAX_RESPONSE = 8 * 1024 * 1024, MAX_FILE = 1024 * 1024;
@@ -42,6 +43,49 @@ const refPath = (value: string) => value.split('/').map(segment).join('/');
 function expected(value: unknown, version: number) { if (!Number.isSafeInteger(value) || value !== version) throw fail('La configurazione è cambiata. Ricarica e ripeti la revisione.', 'GITHUB_CONFLICT', 409); }
 function publicConnection(item: Connection) { return { id: item.id, version: item.version, name: item.name, scopeIds: [...item.scopeIds], repositories: [...item.repositories], allowPublish: item.allowPublish, createdAt: item.createdAt, tokenConfigured: true }; }
 function publicPublication(item: Publication) { return clone({ id: item.id, version: item.version, status: item.status, runId: item.runId, scopeId: item.scopeId, connectionId: item.connectionId, repository: item.repository, baseBranch: item.baseBranch, baseCommit: item.baseCommit, patchHash: item.patchHash, files: item.files, title: item.title, body: item.body, branch: item.branch, createdAt: item.createdAt, ...(item.url ? { url: item.url } : {}), ...(item.error ? { error: item.error } : {}), ...(item.treeSha ? { treeSha: item.treeSha } : {}), ...(item.commitSha ? { commitSha: item.commitSha } : {}), ...(item.actualBaseCommit ? { actualBaseCommit: item.actualBaseCommit, baseChanged: item.baseChanged === true } : {}) }); }
+// Display only GitHub result pages for this repository; never follow API-provided URLs.
+function checkUrl(value: unknown, repository: string, commit: string): string | undefined {
+  if (typeof value !== 'string' || value.length > 1000) return;
+  try {
+    const url = new URL(value), prefix = `/${repository}/`;
+    if (url.origin !== 'https://github.com' || url.username || url.password || url.search || url.hash || !url.pathname.toLowerCase().startsWith(prefix)) return;
+    const path = url.pathname.slice(prefix.length);
+    if (/^(?:actions\/runs\/[1-9][0-9]*(?:\/job\/[1-9][0-9]*)?|runs\/[1-9][0-9]*)$/.test(path) || path === `commit/${commit}`) return url.href;
+  } catch { /* An unverified link is omitted, while its result remains visible. */ }
+}
+function parseChecks(value: unknown, source: CheckResult['source'], repository: string, commit: string): CheckResult[] {
+  const invalid = () => fail('Risultati GitHub non validi o non corrispondenti al commit.', 'GITHUB_RESPONSE_INVALID', 502);
+  if (!record(value)) throw invalid();
+  const items = source === 'check_run' ? value.check_runs : value.statuses;
+  if (!Array.isArray(items) || !Number.isSafeInteger(value.total_count) || (value.total_count as number) < 0) throw invalid();
+  if (items.length > 100 || value.total_count !== items.length) throw fail('Risultati GitHub incompleti: limite di 100 risultati per tipo.', 'GITHUB_RESPONSE_LIMIT', 502);
+  if (source === 'commit_status' && (value.sha !== commit || record(value.repository) && String(value.repository.full_name).toLowerCase() !== repository)) throw invalid();
+  const ids = new Set<number>(), contexts = new Set<string>();
+  return items.map(item => {
+    if (!record(item) || !Number.isSafeInteger(item.id) || (item.id as number) < 1 || ids.has(item.id as number)) throw invalid();
+    ids.add(item.id as number);
+    const name = source === 'check_run' ? item.name : item.context;
+    if (typeof name !== 'string' || !name.trim() || name.length > 300 || /[\x00-\x1f\x7f]/.test(name)) throw invalid();
+    let state = 'unknown';
+    if (source === 'check_run') {
+      if (item.head_sha !== commit) throw invalid();
+      if (['queued', 'in_progress', 'waiting', 'requested', 'pending'].includes(String(item.status))) state = String(item.status);
+      else if (item.status === 'completed' && ['success', 'failure', 'neutral', 'cancelled', 'skipped', 'timed_out', 'action_required', 'stale', 'startup_failure'].includes(String(item.conclusion))) state = String(item.conclusion);
+    } else {
+      if (contexts.has(name)) throw invalid(); contexts.add(name);
+      if (item.url !== undefined && (typeof item.url !== 'string' || item.url.toLowerCase() !== `${API}/repos/${repository}/statuses/${commit}`)) throw invalid();
+      if (['success', 'failure', 'error', 'pending'].includes(String(item.state))) state = String(item.state);
+    }
+    const url = checkUrl(source === 'check_run' ? item.html_url : item.target_url, repository, commit);
+    return { id: `${source}:${item.id}`, source, name, state, ...(url ? { url } : {}) };
+  });
+}
+function summarizeChecks(checks: CheckResult[], complete: boolean): string {
+  if (!complete) return 'unknown';
+  if (!checks.length) return 'none';
+  for (const state of ['failure', 'error', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale', 'unknown', 'in_progress', 'queued', 'waiting', 'requested', 'pending', 'neutral', 'skipped']) if (checks.some(check => check.state === state)) return state;
+  return 'success';
+}
 function validateState(raw: unknown): State {
   try {
     object(raw, ['version', 'connections', 'publications']);
@@ -233,6 +277,27 @@ export function createGitHub({ storage, workspace, approvedRun, transport = fetc
     }),
     disconnect: (input: { id: string; expectedVersion: number }) => serial(async () => { const state = await load(), connection = state.connections.find(item => item.id === id(input.id)); if (!connection) throw fail('Collegamento non trovato.', 'GITHUB_NOT_FOUND', 404); expected(input.expectedVersion, connection.version); state.connections = state.connections.filter(item => item !== connection); await persist(state); return { disconnected: connection.id }; }),
     inspect: (input: { connectionId: string; scopeId: string; repository: string }) => serial(async () => { const state = await load(), repository = repo(input.repository), connection = await authorize(state, input.connectionId, input.scopeId, repository); return metadata(connection, repository); }),
+    checks: (input: { connectionId: string; scopeId: string; repository: string; ref: string }) => serial(async () => {
+      const state = await load(), repository = repo(input.repository), connection = await authorize(state, input.connectionId, input.scopeId, repository), reference = branch(input.ref);
+      noSecrets(reference, connection.token);
+      const resolved = await request(connection, `/repos/${repository}/commits/${segment(reference)}`);
+      if (!record(resolved)) throw fail('Commit GitHub non valido.', 'GITHUB_RESPONSE_INVALID', 502);
+      const commitSha = sha(resolved.sha);
+      if (SHA.test(reference) && reference !== commitSha) throw fail('Commit GitHub non corrispondente.', 'GITHUB_RESPONSE_INVALID', 502);
+      const checks: CheckResult[] = [], errors: Array<{ source: CheckResult['source']; code: string }> = [];
+      for (const source of ['check_run', 'commit_status'] as const) {
+        try {
+          const suffix = source === 'check_run' ? 'check-runs?filter=latest&per_page=100' : 'status?per_page=100';
+          const results = parseChecks(await request(connection, `/repos/${repository}/commits/${commitSha}/${suffix}`), source, repository, commitSha);
+          noSecrets(JSON.stringify(results), connection.token); checks.push(...results);
+        } catch (error) {
+          const code = record(error) && internalErrors.has(error) && typeof error.code === 'string' ? error.code : 'GITHUB_RESPONSE_INVALID';
+          errors.push({ source, code });
+        }
+      }
+      const complete = errors.length === 0;
+      return { repository, ref: reference, commitSha, fetchedAt: stamp(), state: summarizeChecks(checks, complete), complete, checks, errors };
+    }),
     readFile: (input: { connectionId: string; scopeId: string; repository: string; ref: string; path: string }) => serial(async () => {
       const state = await load(), repository = repo(input.repository), path = filePath(input.path), connection = await authorize(state, input.connectionId, input.scopeId, repository), reference = branch(input.ref);
       noSecrets(path + '\n' + reference, connection.token);

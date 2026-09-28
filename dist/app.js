@@ -1,3 +1,4 @@
+import {createQuickActions} from './quick-actions.js';
 import {renameAgent, teamVersion} from './team.js';
 import {t, ui, locale, onLanguageChange, bindText} from './i18n.js';
 import { createOfficeWorld } from './world.js';
@@ -12,12 +13,12 @@ const escapeHTML=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<'
 let officeWorld=null,running=false,taskRunning=false,ready=false,controller=null,toastTimer=null;
 let currentConversationId=null;
 let knowledge=null,operations=null,currentScopeName='Imprenditoria',currentScope='business',selectedWorkflow=null,studioPoll=null;
-let experience=null,activitySnapshot={tasks:[]},chatStartedAt=null,chatProblemKey=null;
+let quickActions=null,experience=null,activitySnapshot={tasks:[]},chatStartedAt=null,chatProblemKey=null;
 const chatParticipants=new Set();
 const activeAgents=new Map(),seenMessages=new Set(),messageRecords=new Map(),agentStates=new Map();
 let shownAgent=null,lastProvider=null,agentNameSaving=false,agentEditVersion=1;
 function activityTasks(){return [...(activitySnapshot.tasks||[]),...repositoryActivityTasks(activitySnapshot.repositoryRuns||[])];}
-function syncExperience(){experience?.setActivity(deriveActivity({tasks:activityTasks(),chat:{running,activeAgentIds:running?[...activeAgents.keys()]:[],participantIds:[...chatParticipants],startedAt:chatStartedAt,problemKey:chatProblemKey}}));}
+function syncExperience(){quickActions?.setContext({scopeName:currentScopeName,reviewCount:activityTasks().filter(task=>task.scopeId===currentScope&&task.decision?.status!=='changes_requested'&&['review','failed','paused'].includes(task.status)).length,busy:running||activityTasks().some(task=>task.status==='running')});experience?.setActivity(deriveActivity({tasks:activityTasks(),chat:{running,activeAgentIds:running?[...activeAgents.keys()]:[],participantIds:[...chatParticipants],startedAt:chatStartedAt,problemKey:chatProblemKey}}));}
 export function getStudioDiagnostics(){return {experience:experience?.getDiagnostics(),world:officeWorld?.getDiagnostics()};}
 const avatar=a=>ui`<span class="avatar-window" style="--agent-color:${a.color}" aria-hidden="true">${escapeHTML(a.name.slice(0,1))}</span>`;
 function toast(message){clearTimeout(toastTimer);$('#toast').textContent=t(message);$('#toast').hidden=false;toastTimer=setTimeout(()=>$('#toast').hidden=true,3400);}
@@ -77,13 +78,14 @@ function renderWorkflow(){
  chip.replaceChildren();chip.hidden=!selectedWorkflow;if(!selectedWorkflow)return;
  const label=document.createElement('span');label.textContent=t('Procedura collegata alla conversazione');const clear=document.createElement('button');clear.id='clear-workflow';clear.type='button';clear.textContent=t('Rimuovi');clear.disabled=running;clear.addEventListener('click',()=>{selectedWorkflow=null;renderWorkflow();toast(t('Il prossimo messaggio non applicherà la procedura.'));});chip.append(label,clear);
 }
-knowledge=createKnowledgePanel({
+knowledge=createKnowledgePanel({onCreateTask:workflow=>{experience?.openPanel('projects');void operations.newTask(workflow);},
  toast,getConversationId:()=>currentConversationId,
  onScopeChange:async scopeId=>{if(running)throw Error(t('Attendi la risposta del team.'));const res=await fetch('/api/conversation/scope',{method:'POST',headers:{'Content-Type':'application/json','X-Fuori-Studio':'local'},body:JSON.stringify({scopeId})});const result=await res.json();if(!res.ok)throw Error(result.error||t('Cambio ambito non riuscito.'));$('#chat-input').value='';$('#chat-error').hidden=true;await loadStudio();},
  onUseWorkflow:({scopeId,workflowId,prompt})=>{if(running||scopeId!==currentScope)throw Error(t('Attendi la risposta del team e verifica l’ambito.'));selectedWorkflow=workflowId;renderWorkflow();focusChat(prompt);}
 });
-operations=createOperationsPanel({toast,onScopeChange:async scopeId=>{const res=await fetch('/api/conversation/scope',{method:'POST',headers:{'Content-Type':'application/json','X-Fuori-Studio':'local'},body:JSON.stringify({scopeId})});const result=await res.json();if(!res.ok)throw Error(result.error);await loadStudio();},onRefreshMemory:()=>knowledge.load({scopeId:currentScope}),onProviderChange:()=>loadStudio(),onActivity:snapshot=>{activitySnapshot=snapshot;syncExperience();taskRunning=activityTasks().some(t=>t.status==='running');$('#chat-send').disabled=!ready||taskRunning;$('#chat-input').disabled=running||taskRunning;$('#new-chat').disabled=running||taskRunning;if(running)return;const working=new Map(activityTasks().filter(t=>t.status==='running').flatMap(t=>t.steps.filter(s=>s.status==='running').map(s=>[s.agentId,s.title])));for(const a of agents)updateAgent(a.id,working.has(a.id)?'Al lavoro':'Disponibile',working.get(a.id)||a.task);knowledge?.setBusy(taskRunning);}});
+operations=createOperationsPanel({toast,onCreateWorkflow:task=>{experience?.openPanel('workflows');void knowledge.fromApproved(task);},onScopeChange:async scopeId=>{const res=await fetch('/api/conversation/scope',{method:'POST',headers:{'Content-Type':'application/json','X-Fuori-Studio':'local'},body:JSON.stringify({scopeId})});const result=await res.json();if(!res.ok)throw Error(result.error);await loadStudio();},onRefreshMemory:()=>knowledge.load({scopeId:currentScope}),onProviderChange:()=>loadStudio(),onActivity:snapshot=>{activitySnapshot=snapshot;syncExperience();taskRunning=activityTasks().some(t=>t.status==='running');$('#chat-send').disabled=!ready||taskRunning;$('#chat-input').disabled=running||taskRunning;$('#new-chat').disabled=running||taskRunning;if(running)return;const working=new Map(activityTasks().filter(t=>t.status==='running').flatMap(t=>t.steps.filter(s=>s.status==='running').map(s=>[s.agentId,s.title])));for(const a of agents)updateAgent(a.id,working.has(a.id)?'Al lavoro':'Disponibile',working.get(a.id)||a.task);knowledge?.setBusy(taskRunning);}});
 experience=createStudioExperience({world:officeWorld,knowledge,operations});
+quickActions=createQuickActions({onAction:action=>{if(action==='memory'){experience.openPanel('memory');knowledge.newMemory();}else if(action==='workflows')experience.openPanel('workflows');else{experience.openPanel('projects');if(action==='task')void operations.newTask();else operations.openSection(action);}}});
 createAccessPanel({toast,getScopeId:()=>currentScope,onAISettings:()=>{experience?.openPanel('projects');operations?.openSection('providers');},onWorkspaceChanged:()=>{knowledge?.load({scopeId:currentScope});operations?.load();}});
 window.addEventListener('studio-session-expired',()=>{controller?.abort();clearTimeout(studioPoll);ready=false;});
 syncExperience();

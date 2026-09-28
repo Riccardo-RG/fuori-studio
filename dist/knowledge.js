@@ -13,7 +13,7 @@ const formattedDate = value => {
 };
 
 /** A local, inspectable knowledge library. The application owns conversation switching. */
-export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversationId = () => null, toast = () => {} }) {
+export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, onUseWorkflow, getConversationId = () => null, toast = () => {} }) {
   const panel = document.createElement('section');
   panel.id = 'knowledge-panel';
   panel.className = 'knowledge-panel';
@@ -116,7 +116,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
     const proposed = memory ? item.status !== 'confirmed' : item.status !== 'ready';
     const state = memory ? (proposed ? t('Da confermare') : t('Confermata')) : (proposed ? t('Bozza') : t('Pronta'));
     const agentRestriction = memory && item.agentIds?.length ? ui`<p class="knowledge-agent-access">Per ${escape(item.agentIds.map(id => agents.find(agent => agent.id === id)?.name || id).join(', '))}</p>` : '';
-    return ui`<article class="knowledge-card"><div class="knowledge-card-meta">${origin(item)}<span class="knowledge-state${proposed ? ' is-proposed' : ''}">${state}</span></div><h3>${escape(item.title)}</h3><p class="knowledge-card-copy">${escape(short(memory ? item.content : item.description || item.input || item.output))}</p><div class="knowledge-card-details"><span>${memory ? escape(t(typeNames[item.type] || 'Informazione')) : t("{0} passaggi", {0: (item.steps || []).length})}</span>${item.updatedAt ? ui`<span>Aggiornata ${escape(formattedDate(item.updatedAt))}</span>` : ''}</div>${agentRestriction}<p class="knowledge-source"><span>Fonte</span> ${escape(short(item.source || t('Annotazione manuale'), 150))}</p>${item.sharedWith?.length ? ui`<p class="knowledge-links">Disponibile anche in ${escape(item.sharedWith.map(scopeName).join(', '))}</p>` : ''}<div class="knowledge-card-actions"><button type="button" class="knowledge-button" data-action="edit" data-id="${escape(item.id)}">${memory ? t('Apri / modifica') : t('Apri procedura')}</button>${memory && proposed ? ui`<button type="button" class="knowledge-button is-primary" data-action="confirm" data-id="${escape(item.id)}">Conferma</button>` : ''}${!memory && !proposed ? ui`<button type="button" class="knowledge-button is-primary" data-action="use" data-id="${escape(item.id)}">Usa in chat ↗</button>` : ''}</div><div class="knowledge-card-bottom">${revisionButton(item)}<button type="button" class="knowledge-text-button is-danger" data-action="delete" data-id="${escape(item.id)}" aria-label="Elimina ${escape(item.title)}">Elimina</button></div></article>`;
+    return ui`<article class="knowledge-card"><div class="knowledge-card-meta">${origin(item)}<span class="knowledge-state${proposed ? ' is-proposed' : ''}">${state}</span></div><h3>${escape(item.title)}</h3><p class="knowledge-card-copy">${escape(short(memory ? item.content : item.description || item.input || item.output))}</p><div class="knowledge-card-details"><span>${memory ? escape(t(typeNames[item.type] || 'Informazione')) : t("{0} passaggi", {0: (item.steps || []).length})}</span>${item.updatedAt ? ui`<span>Aggiornata ${escape(formattedDate(item.updatedAt))}</span>` : ''}</div>${agentRestriction}<p class="knowledge-source"><span>Fonte</span> ${escape(short(item.source || t('Annotazione manuale'), 150))}</p>${item.sharedWith?.length ? ui`<p class="knowledge-links">Disponibile anche in ${escape(item.sharedWith.map(scopeName).join(', '))}</p>` : ''}<div class="knowledge-card-actions"><button type="button" class="knowledge-button" data-action="edit" data-id="${escape(item.id)}">${memory ? t('Apri / modifica') : t('Apri procedura')}</button>${memory && proposed ? ui`<button type="button" class="knowledge-button is-primary" data-action="confirm" data-id="${escape(item.id)}">Conferma</button>` : ''}${!memory && !proposed ? ui`<button type="button" class="knowledge-button is-primary" data-action="use" data-id="${escape(item.id)}">Usa in chat ↗</button><button type="button" class="knowledge-button" data-action="use-task" data-id="${escape(item.id)}">Usa per un incarico</button>` : ''}</div><div class="knowledge-card-bottom">${revisionButton(item)}<button type="button" class="knowledge-text-button is-danger" data-action="delete" data-id="${escape(item.id)}" aria-label="Elimina ${escape(item.title)}">Elimina</button></div></article>`;
   }
 
   function render() {
@@ -383,10 +383,13 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
     localizeDialog = () => { const form=dialog.querySelector('form'); const draft=form?new FormData(form):null; const titles=draft?.getAll('stepTitle')||[]; openWorkflow({...item,steps:titles.map((title,index)=>({title,agentId:draft.getAll('stepAgent')[index],output:draft.getAll('stepOutput')[index]}))}); };
     if (locked()) return;
     const home = item.scopeId || currentScope;
-    const body = ui`<p class="knowledge-form-intro">Salvata in <strong>${escape(scopeName(home))}</strong>. La procedura guida la chat e può definire i passaggi di un incarico. Le capacità disponibili sono analisi e redazione; non esegue azioni esterne.</p>${field(t('Titolo'), 'title', item.title, {required:true,max:140})}${field(t('A cosa serve'), 'description', item.description, {area:true,max:2000,rows:2})}${field(t('Materiali e informazioni di partenza'), 'input', item.input, {area:true,required:true,max:4000,rows:3,hint:t('Esempio: idea di prodotto, obiettivo, destinatari, vincoli e scadenza.')})}<div class="knowledge-steps" id="knowledge-steps">${(item.steps?.length ? item.steps : [{}]).map(stepMarkup).join('')}</div><button type="button" class="knowledge-button" id="knowledge-add-step">＋ Aggiungi un passaggio</button>${field(t('Consegna finale attesa'), 'output', item.output, {area:true,required:true,max:4000,rows:3})}<div class="knowledge-field"><label for="knowledge-field-status">Stato</label><select id="knowledge-field-status" name="status"><option value="draft"${item.status !== 'ready' ? ' selected' : ''}>Bozza · da rivedere</option><option value="ready"${item.status === 'ready' ? ' selected' : ''}>Pronta per chat e incarichi</option></select></div>${sourceFields(item)}${sharingFields({...item,scopeId:home})}`;
+    const notice=item.origin?ui`<p class="knowledge-form-intro">Rivedi il metodo prima di riutilizzarlo. Copiamo brief e istruzioni dei passaggi; le risposte AI, le memorie e i documenti non vengono copiati.</p>${item.truncated?.length?ui`<p class="knowledge-form-error">Alcuni campi sono stati abbreviati per rispettare i limiti della procedura. Rivedili prima di salvare.</p>`:''}`:'';
+    const body = notice + ui`<p class="knowledge-form-intro">Salvata in <strong>${escape(scopeName(home))}</strong>. La procedura guida la chat e può definire i passaggi di un incarico. Le capacità disponibili sono analisi e redazione; non esegue azioni esterne.</p>${field(t('Titolo'), 'title', item.title, {required:true,max:140})}${field(t('A cosa serve'), 'description', item.description, {area:true,max:2000,rows:2})}${field(t('Materiali e informazioni di partenza'), 'input', item.input, {area:true,required:true,max:4000,rows:3,hint:t('Esempio: idea di prodotto, obiettivo, destinatari, vincoli e scadenza.')})}<div class="knowledge-steps" id="knowledge-steps">${(item.steps?.length ? item.steps : [{}]).map(stepMarkup).join('')}</div><button type="button" class="knowledge-button" id="knowledge-add-step">＋ Aggiungi un passaggio</button>${field(t('Consegna finale attesa'), 'output', item.output, {area:true,required:true,max:4000,rows:3})}<div class="knowledge-field"><label for="knowledge-field-status">Stato</label><select id="knowledge-field-status" name="status"><option value="draft"${item.status !== 'ready' ? ' selected' : ''}>Bozza · da rivedere</option><option value="ready"${item.status === 'ready' ? ' selected' : ''}>Pronta per chat e incarichi</option></select></div>${item.origin?ui`<p class="knowledge-source">${escape(item.source)}</p><p class="knowledge-hint">La procedura resta nell’ambito della consegna. Potrai condividerla esplicitamente dopo averla salvata.</p>`:sourceFields(item)+sharingFields({...item,scopeId:home})}`;
     openDialog(item.id ? t('Rivedi la procedura') : t('Un metodo da riutilizzare'), body, item.id ? t('Salva modifiche') : t('Salva procedura'), async data => {
       const titles = data.getAll('stepTitle'), owners = data.getAll('stepAgent'), outputs = data.getAll('stepOutput');
-      await save('saveWorkflow', { ...(item.id ? {id:item.id,expectedVersion:item.version} : {}),scopeId:home,title:data.get('title').trim(),description:data.get('description').trim(),input:data.get('input').trim(),output:data.get('output').trim(),status:data.get('status'),source:data.get('source').trim(),sharedWith:data.getAll('sharedWith'),steps:titles.map((title,index) => ({title:title.trim(),agentId:owners[index],output:outputs[index].trim()})) }, t('Procedura salvata.'));
+      const fields={title:data.get('title').trim(),description:data.get('description').trim(),input:data.get('input').trim(),output:data.get('output').trim(),status:data.get('status'),steps:titles.map((title,index)=>({title:title.trim(),agentId:owners[index],output:outputs[index].trim()}))};
+      if(item.origin){const result=await learnRequest('save',{taskId:item.origin.taskId,expectedVersion:item.origin.expectedVersion,workflow:fields});setSnapshot(result.snapshot);activeTab='workflows';query='';$('#knowledge-search').value='';syncScopes();render();window.dispatchEvent(new CustomEvent('studio-workspace-changed'));toast(t('Procedura salvata. La trovi in Memoria → Procedure.'));}
+      else await save('saveWorkflow',{...(item.id?{id:item.id,expectedVersion:item.version}:{}),...fields,scopeId:home,source:data.get('source').trim(),sharedWith:data.getAll('sharedWith')},t('Procedura salvata.'));
     });
     const steps = dialog.querySelector('#knowledge-steps');
     const refreshSteps = () => {
@@ -513,6 +516,7 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
     if (action === 'delete') openDelete(item);
     if (action === 'confirm') confirmMemory(item);
     if (action === 'use') useWorkflow(item);
+    if (action === 'use-task'&&!locked())onCreateTask(item);
   });
   panel.querySelector('[role="tablist"]').addEventListener('keydown', event => {
     if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
@@ -527,5 +531,18 @@ export function createKnowledgePanel({ onScopeChange, onUseWorkflow, getConversa
 
   onLanguageChange(() => { syncScopes(); render(); evaluationHost.setAttribute('aria-label',t('Valutazione della memoria')); if(dialog.open&&!saving)localizeDialog?.(); });
 
-  return { load, setScope, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
+  async function learnRequest(action,payload){const response=await fetch('/api/workflows/learn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload})});const result=await response.json();if(!response.ok)throw Object.assign(Error(t(result.error||'Dati della procedura non validi.')),{status:response.status});return result;}
+  async function fromApproved(task){
+    if(locked())return;
+    switching=true;syncControls();
+    try{
+      toast(t('Preparazione della procedura…'));
+      const result=await learnRequest('preview',{taskId:task.id,expectedVersion:task.version});
+      if(result.workflow.scopeId!==currentScope){await onScopeChange(result.workflow.scopeId);setScope(result.workflow.scopeId);}
+      switching=false;
+      openWorkflow({...result.workflow,origin:result.origin,truncated:result.truncated});
+    }catch(error){toast(error.message);}
+    finally{switching=false;syncControls();}
+  }
+  return { load, setScope, fromApproved, newMemory(){if(!locked())openMemory();}, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
 }

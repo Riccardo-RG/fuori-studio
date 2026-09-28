@@ -48,6 +48,8 @@ In **Da decidere**, read the entire delivery and check claims that require outsi
 
 ## Reusable knowledge
 
+From the latest approved assignment delivery, choose **Crea procedura / Create workflow** to prepare an editable method. Review its brief and steps, then save it as a draft or ready procedure. **Usa per un incarico / Use for a task** prepares a new queued assignment with those steps. No AI call is made by preparing or saving the method. See [daily productivity](PRODUCTIVITY.md) for scope protections and the distinction between text procedures and repository execution.
+
 Use **Memoria** for stable information, preferences, decisions and patterns. Proposed notes are excluded from AI context. Review the wording, source, scope and allowed agents before confirming.
 
 After accepting a delivery, prepare a memory proposal from the task. Prefer a reusable lesson rather than copying the entire delivery. The proposal is scoped, attributed to the task version and remains unconfirmed. Explicitly generalize sensitive details before sharing a method elsewhere.
@@ -77,6 +79,8 @@ For **Importa**, choose an encrypted `.fs-memory` archive or exported `.json`, s
 Only **Importa come proposte e bozze** applies the preview. Review the resulting memories and procedures before confirming them for agent use. Password fields are cleared after the export or preview request, and the application does not place passphrases in browser storage or URLs. See [portable archives](PORTABILITY.md) for supported formats and limits.
 
 ## Services and permissions
+
+The quick-action bar offers new assignments, memory capture and the combined review inbox. **Command/Control K** opens the searchable menu. **GitHub → Risultati test / Test results** reads the selected commit's checks on demand; missing or partial results never count as passing tests. See [GitHub test results](GITHUB_CHECKS.md).
 
 Configure an API service using its exact model ID and your API key, then assign it to an agent. Enable that connection for the scopes whose data it may receive. A shared note's source scope must also allow the connection. There is no implicit fallback to another provider.
 

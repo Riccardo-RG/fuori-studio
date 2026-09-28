@@ -36,18 +36,19 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Owned projects | Real project records with scoped tasks; optional client classification |
 | Durable assignments | Ordered steps, single active task, saved outputs, pause/resume, restart after invalidated context |
 | Deliverables | Versioned text, explicit approval or revision requests, Markdown export |
-| Decision inbox | Deliverables waiting for review and interrupted/failed work |
+| Decision inbox | Text deliveries and repository patches waiting for review, plus interrupted/failed work |
+| Quick actions | Scope-aware task/memory shortcuts and a searchable Command/Control K menu |
 | Memory | Source-linked suggestions, review inbox, per-scope learning policies, conflicts, undo and deletion suppression |
 | Portability | Scoped Markdown/JSON export, passphrase-encrypted packages, previewed imports as proposals |
 | Identity | Optional OIDC owner login, protected sessions, CSRF checks and immediate revocation |
 | Hybrid execution | Short-lived pairing codes, scoped devices, local Codex login, leases and stale-result rejection |
 | Remote repository work | Separate repository grants, worker-local aliases/check policies, durable receipt recovery without rerunning edits |
 | Deployment and recovery | Guided readiness, secret-file configuration, hosted container recipe, verified encrypted backups and new-directory restore |
-| Authenticated GitHub | Scoped private-file imports, exact approved patch previews, isolated branches and explicitly published draft PRs |
+| Authenticated GitHub | Scoped private-file imports, commit-specific CI results, exact approved patch previews, isolated branches and explicitly published draft PRs |
 | Memory evaluation | Owner-labeled retrieval cases, scope exclusions, missing facts, stale labels and versioned usefulness feedback |
 | Knowledge sync | Opt-in scope replication, three-way conflicts and durable deletion markers; no credential transfer |
 | Storage | SQLite transactions with authenticated encrypted records and encrypted migration backups |
-| Procedures | Versioned instructions; selectable in chat or executed as task steps |
+| Procedures | Reviewed methods from approved text deliveries; versioned instructions usable in chat or as task steps |
 | AI services | Local Codex; API adapters for OpenAI, Anthropic, DeepSeek, OpenRouter |
 | Provider controls | Per-agent service assignment, scope allowlists, no silent provider fallback |
 | Routines | Queued by default; optional explicit autonomous start with durable daily call/run limits |
@@ -120,6 +121,8 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 - [Verified backups and restore](docs/DEPLOYMENT_RECOVERY.md)
 - [Remote repository execution](docs/REMOTE_EXECUTION.md)
 - [Private GitHub access and reviewed publication](docs/GITHUB.md)
+- [GitHub checks and commit status results](docs/GITHUB_CHECKS.md)
+- [Reusable workflows and quick actions](docs/PRODUCTIVITY.md)
 - [Measuring memory retrieval and usefulness](docs/MEMORY_EVALUATION.md)
 - [Memory export and import](docs/PORTABILITY.md)
 - [Repository execution and review](docs/REPOSITORY_WORK.md)
