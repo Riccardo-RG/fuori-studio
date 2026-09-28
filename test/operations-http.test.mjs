@@ -50,6 +50,11 @@ process.stdin.on('end', () => {
     const raw = await response.text(); let value; try { value = JSON.parse(raw); } catch { value = { raw }; }
     assert.equal(response.status, expected, `${path}: ${raw}`); return value;
   }
+  const runTask = async (payload, expected = 200) => {
+    const preview = await request('/api/execution/preview', { kind: 'task', ...payload }, expected);
+    if (expected !== 200) return preview;
+    return request('/api/tasks/run', { ...payload, previewId: preview.previewId });
+  };
   const mutate = (action, payload, expected) => request('/api/operations', { action, payload }, expected);
   const memoryMutation = (action, payload, expected) => request('/api/workspace', { action, payload }, expected);
   const getTask = async id => (await request('/api/operations')).tasks.find(task => task.id === id);
@@ -65,12 +70,13 @@ process.stdin.on('end', () => {
   await mutate('startTask', { id: task.id }, 400);
   await mutate('startStep', { id: task.id, stepId: task.steps[0].id, executionId: 'fake' }, 400);
   await mutate('submitArtifact', { id: task.id, content: 'Injected' }, 400);
-  await request('/api/tasks/run', { id: task.id, expectedVersion: task.version });
+  await request('/api/tasks/run', { id: task.id, expectedVersion: task.version }, 409);
+  await runTask({ id: task.id, expectedVersion: task.version });
   await memoryMutation('deleteMemory', { id: privateNote.id }, 409);
   task = await readyTask(task.id);
   assert.equal(await promptCount(), 2);
   task = (await mutate('requestChanges', { id: task.id, expectedVersion: task.version, feedback: 'Make the acceptance criteria explicit.' })).tasks[0];
-  await request('/api/tasks/run', { id: task.id, expectedVersion: task.version }); task = await readyTask(task.id);
+  await runTask({ id: task.id, expectedVersion: task.version }); task = await readyTask(task.id);
   assert.equal(task.artifacts.length, 2); assert.equal(task.artifacts[0].decision, 'changes_requested');
   task = (await mutate('approveTask', { id: task.id, expectedVersion: task.version })).tasks[0];
   const proposal = (await request('/api/tasks/memory', { id: task.id, title: 'Approved reusable criterion', content: 'Review measurable criteria.', type: 'pattern' })).memories.at(-1);
@@ -80,13 +86,13 @@ process.stdin.on('end', () => {
   await request('/api/workflows/learn',{action:'preview',payload:{taskId:task.id,expectedVersion:task.version}},409);
   const learningProject=(await mutate('createProject',{title:'Learning fixture',scopeId:'development',kind:'owned'})).projects.at(-1);
   let learningTask=(await mutate('createTask',{projectId:learningProject.id,title:'Reusable method',brief:'Review acceptance criteria.',agentId:'forge'})).tasks.at(-1);
-  await request('/api/tasks/run',{id:learningTask.id,expectedVersion:learningTask.version});learningTask=await readyTask(learningTask.id);
+  await runTask({id:learningTask.id,expectedVersion:learningTask.version});learningTask=await readyTask(learningTask.id);
   learningTask=(await mutate('approveTask',{id:learningTask.id,expectedVersion:learningTask.version})).tasks.find(item=>item.id===learningTask.id);
   const learnInput={taskId:learningTask.id,expectedVersion:learningTask.version},preview=await request('/api/workflows/learn',{action:'preview',payload:learnInput});
   const {scopeId:ignoredScope,source:ignoredSource,sharedWith:ignoredSharing,...recipe}=preview.workflow;
   const learned=await request('/api/workflows/learn',{action:'save',payload:{...learnInput,workflow:{...recipe,status:'ready'}}});
   const savedRecipe=learned.snapshot.workflows.find(item=>item.id===learned.workflowId);assert.equal(savedRecipe.scopeId,'development');assert.deepEqual(savedRecipe.sharedWith,[]);
-  const repeated=(await mutate('createTask',{projectId:learningProject.id,title:'Use reviewed workflow',brief:'New materials.',workflowId:learned.workflowId})).tasks.at(-1);
+  const repeated=(await mutate('createTask',{projectId:learningProject.id,title:'Use reviewed workflow',brief:'New materials.',workflowId:learned.workflowId,inputValues:{objective:'Review this case',deliverable:'A criteria checklist'},expectedWorkflowVersion:savedRecipe.version})).tasks.at(-1);
   assert.equal(repeated.status,'queued');assert.equal(repeated.steps[0].instruction,savedRecipe.steps[0].output);
 
   const secret = 'fixture-api-secret-not-for-public-responses';
@@ -97,7 +103,7 @@ process.stdin.on('end', () => {
   await request('/api/providers', { action: 'setScopePolicy', payload: { scopeId: 'personal', connectionIds: [] } });
   const blocked = (await mutate('createTask', { projectId: project.id, title: 'Blocked by source scope', agentId: 'forge' })).tasks.at(-1);
   const count = await promptCount();
-  await request('/api/tasks/run', { id: blocked.id }, 403);
+  await runTask({ id: blocked.id }, 403);
   assert.equal(await promptCount(), count); assert.equal((await getTask(blocked.id)).status, 'queued');
   await request('/api/providers', { action: 'setScopePolicy', payload: { scopeId: 'personal', connectionIds: ['codex'] } });
 

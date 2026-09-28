@@ -22,8 +22,8 @@ The default AI connection uses the Codex CLI already signed in on your computer.
 
 1. In **Progetti**, create an owned project. Keep the dedicated-memory option selected to give it its own conversation and notes.
 2. Add the brief and constraints. Save durable decisions in **Memoria** and confirm only the notes you want agents to use.
-3. Create an assignment using the built-in product-brief flow, one responsible agent, or a ready procedure. Its steps become real, persisted execution steps.
-4. Start the assignment. Each completed step is saved. You may pause it and resume later; closing the browser does not stop a task.
+3. Create an assignment using the built-in product-brief flow, one responsible agent, or a ready procedure. Fill in any reusable procedure fields for this use; its steps become real, persisted execution steps.
+4. Review **What does this agent know?** before starting: inspect each role's context, provider and available call budget, exclude eligible material, then confirm. Each completed step is saved. You may pause it and resume later; closing the browser does not stop a task.
 5. Open **Da decidere** to inspect the delivered text, intermediate outputs, context references, and available token counts. Download a Markdown copy, approve it, or request changes with feedback.
 6. After approval, select the memory action to draft an editable pattern or decision. It remains a proposal until explicitly confirmed in **Memoria**.
 
@@ -38,6 +38,8 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Deliverables | Versioned text, explicit approval or revision requests, Markdown export |
 | Decision inbox | Text deliveries and repository patches waiting for review, plus interrupted/failed work |
 | Quick actions | Scope-aware task/memory shortcuts and a searchable Command/Control K menu |
+| Studio search | Local search across current/archived conversations, memories, documents, workflows, tasks, deliveries and repository runs, with scoped results and saved originals |
+| Execution preview | Per-role context, history and service review before explicit starts; exclusions, expiring receipts and revalidation without AI calls |
 | Memory | Source-linked suggestions, review inbox, per-scope learning policies, conflicts, undo and deletion suppression |
 | Portability | Scoped Markdown/JSON export, passphrase-encrypted packages, previewed imports as proposals |
 | Identity | Optional OIDC owner login, protected sessions, CSRF checks and immediate revocation |
@@ -48,9 +50,10 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Memory evaluation | Owner-labeled retrieval cases, scope exclusions, missing facts, stale labels and versioned usefulness feedback |
 | Knowledge sync | Opt-in scope replication, three-way conflicts and durable deletion markers; no credential transfer |
 | Storage | SQLite transactions with authenticated encrypted records and encrypted migration backups |
-| Procedures | Reviewed methods from approved text deliveries; versioned instructions usable in chat or as task steps |
+| Procedures | Reviewed methods from approved text deliveries; versioned instructions with reusable materials, objective, constraints and deliverable fields |
 | AI services | Local Codex; API adapters for OpenAI, Anthropic, DeepSeek, OpenRouter |
 | Provider controls | Per-agent service assignment, scope allowlists, no silent provider fallback |
+| Call budgets | Atomic daily, project-lifetime and assignment-lifetime ceilings, including failed attempts and revisions; no invented monetary estimate |
 | Routines | Queued by default; optional explicit autonomous start with durable daily call/run limits |
 | Repository work | Committed baseline, isolated checkout, real checks, independent review, immutable patch and human approval |
 | Sources | Scoped documents/PDF text, URL snapshots, public GitHub and allowed local folders; source versions and expiry |
@@ -106,12 +109,16 @@ Tests use temporary archives, mocked HTTP responses, and a fake Codex binary. Th
 
 Repository execution is currently blocked on the inspected macOS 13.6.3 host: its Codex sandbox preflight fails with `TIOCSTI`. The app keeps isolation enforced and requires a compatible host/runtime before real editing or checks. See [the recorded compatibility diagnostic](docs/REPOSITORY_WORK.md#host-compatibility-diagnostic).
 
-Start with [development guidance](CONTRIBUTING.md), [architecture decisions](docs/ARCHITECTURE.md), and the [HTTP API](docs/API.md). The UI is Italian; engineering and product documentation is English.
+Start with [development guidance](CONTRIBUTING.md), [architecture decisions](docs/ARCHITECTURE.md), and the [HTTP API](docs/API.md). The UI supports Italian and English; engineering and product documentation is English.
 
 ## Documentation
 
 - [Product direction and boundaries](PRODUCT.md)
 - [Operating the studio](docs/USER_GUIDE.md)
+- [Local search and saved originals](docs/SEARCH.md)
+- [Reviewing context before execution](docs/EXECUTION_PREVIEW.md)
+- [Reusable workflow fields](docs/WORKFLOW_FIELDS.md)
+- [Project and assignment call budgets](docs/BUDGETS.md)
 - [Dioramas, activity and accessible controls](docs/VISUAL_EXPERIENCE.md)
 - [Architecture and stack decisions](docs/ARCHITECTURE.md)
 - [Memory and context design](docs/MEMORY_DESIGN.md)

@@ -181,3 +181,19 @@ test('scheduler rejects a definition changed while workflow steps were being res
   const task = (await f.operations.getSnapshot()).tasks[0];
   assert.equal(task.workflowId, newFlow.id); assert.equal(task.steps.length, 1); assert.equal(task.steps[0].title, 'Replacement step');
 });
+
+test('zero-call finalization still checks saved evidence and exclusions', async t => {
+  const f = await fixture(t);
+  const memory = await note(f.workspace);
+  let task = await f.createTask();
+  task = (await f.operations.mutate('startTask', { id: task.id })).tasks[0];
+  await f.operations.mutate('startStep', { id: task.id, stepId: task.steps[0].id, executionId: task.executionId });
+  await f.operations.mutate('completeStep', { id: task.id, stepId: task.steps[0].id, executionId: task.executionId, output: 'Saved result', context: { scopeId: 'business', memories: [{ id: memory.id, version: memory.version }], workflows: [] } });
+  task = (await f.operations.recoverInterrupted()).tasks[0];
+  assert.equal(task.status, 'paused');
+  assert.deepEqual((await f.executor.preview(task.id, task.version)).steps, []);
+  await assert.rejects(f.executor.preview(task.id, task.version, { excludeMemoryIds: [memory.id] }), { statusCode: 409 });
+  await f.workspace.mutate('saveMemory', { id: memory.id, expectedVersion: memory.version, content: 'Changed after the saved result.' });
+  await assert.rejects(f.executor.start(task.id, task.version), { statusCode: 409 });
+  assert.equal(f.calls.length, 0);
+});

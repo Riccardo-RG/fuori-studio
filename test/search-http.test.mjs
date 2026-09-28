@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { once } from 'node:events';
+import { createArchive } from '../lib/archive.mjs';
+import { createConversationStore } from '../lib/conversations.mjs';
+import { createWorkspaceStore } from '../lib/workspace.mjs';
+import { createSourceStore } from '../lib/sources.ts';
+
+test('search HTTP routes retrieve persisted originals, enforce scope and sharing, and never execute AI', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'fuori-search-http-')), dataDirectory = join(directory, 'data');
+  let child;
+  t.after(async () => { if (child?.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); } await rm(directory, { recursive:true, force:true }); });
+  const archive = createArchive({ directory:dataDirectory }), workspace = createWorkspaceStore({ directory:dataDirectory, storage:archive }), conversations = createConversationStore({ directory:dataDirectory, storage:archive });
+  const sourceStore = createSourceStore({ storage:archive, workspace });
+  const original = await conversations.select('business'); original.messages.push({ id:'archived-message', role:'user', text:'Release launch archived original' }); await conversations.save(original); await conversations.reset('business');
+  const personal = await conversations.load('personal'); personal.messages.push({ id:'private-message', role:'user', text:'Release private message' }); await conversations.save(personal);
+  const memory = { scopeId:'personal', type:'decision', title:'Release decision', content:'Ship the release on Tuesday', status:'confirmed', source:'Planning review', sharedWith:['business'], agentIds:[] };
+  const snapshot = await workspace.mutate('saveMemory', memory), decision = snapshot.memories.at(-1);
+  const imported = await sourceStore.importText({ scopeId:'business', title:'Release document', text:'The original release specification.' });
+  await archive.close();
+  const reserve = createServer(); reserve.listen(0, '127.0.0.1'); await once(reserve, 'listening'); const port = reserve.address().port; await new Promise(done => reserve.close(done));
+  child = spawn(process.execPath, ['server.mjs'], { cwd:resolve('.'), env:{ ...process.env, PORT:String(port), FUORI_STUDIO_DATA_DIR:dataDirectory, FUORI_STUDIO_CODEX_BIN:join(directory, 'no-ai-executable'), FUORI_STUDIO_MODE:'local' }, stdio:['ignore', 'pipe', 'pipe'] });
+  await new Promise((done, reject) => { const timer = setTimeout(() => reject(Error('Server startup timeout')), 10000); let errors = ''; child.stderr.on('data', chunk => errors += chunk); child.stdout.on('data', chunk => { if (String(chunk).includes('Fuori Studio')) { clearTimeout(timer); done(); } }); child.on('exit', code => { clearTimeout(timer); reject(Error(`Server exited ${code}: ${errors}`)); }); });
+  const base = `http://127.0.0.1:${port}`;
+  async function request(path, body, status = 200) { const response = await fetch(base + path, body ? { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Fuori-Studio':'local' }, body:JSON.stringify(body) } : {}); const value = await response.json(); assert.equal(response.status, status, JSON.stringify(value)); return value; }
+  const found = await request('/api/search?scopeId=business&q=release');
+  assert.equal(found.localOnly, true); assert.ok(found.results.some(result => result.target.id === 'archived-message'));
+  assert.ok(found.results.some(result => result.target.id === imported.source.id));
+  assert.ok(found.results.some(result => result.target.id === decision.id));
+  assert.ok(!found.results.some(result => result.target.id === 'private-message'));
+  const archived = found.results.find(result => result.target.id === 'archived-message'), retrieved = await request(archived.originalUrl);
+  assert.equal(retrieved.result.target.archived, true); assert.ok(retrieved.blocks.some(block => block.text === 'Release launch archived original'));
+  const doc = await request(found.results.find(result => result.kind === 'document').originalUrl); assert.equal(doc.blocks[0].text, 'The original release specification.');
+  await request(`/api/search/original?scopeId=business&sourceScopeId=personal&kind=conversation&id=private-message&conversationId=${personal.id}`, undefined, 404);
+  assert.ok((await request('/api/search?scopeId=*&q=release')).results.some(result => result.target.id === 'private-message'));
+  await request('/api/workspace', { action:'saveMemory', payload:{ ...memory, id:decision.id, expectedVersion:decision.version, sharedWith:[] } });
+  await request(found.results.find(result => result.target.id === decision.id).originalUrl, undefined, 404);
+  await request('/api/search?scopeId=business&q=release&limit=0', undefined, 400);
+  await request('/api/search?scopeId=business&q=release&kinds=unknown', undefined, 400);
+  const governance = await request('/api/governance'); assert.equal(governance.daily.calls, 0);
+});

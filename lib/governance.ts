@@ -2,12 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { defaultArchive } from './archive.mjs';
 
 export type GovernanceSettings = { version: number; dailyCallLimit: number; maxCallSeconds: number; autonomousRoutines: boolean; maxAutonomousRunsPerDay: number; autonomousEnabledAt: string | null };
-export type CallMeta = { scopeId: string; agentId: string; kind: string; connectionId: string };
+export type BudgetTarget = { scopeId: string; projectId?: string; taskId?: string; runId?: string; budgetRunId?: string };
+export type CallMeta = BudgetTarget & { agentId: string; kind: string; connectionId: string };
+type BudgetSetting = BudgetTarget & { callLimit: number; version: number; updatedAt: string };
 export type CallStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'interrupted';
 export type UsageRecord = CallMeta & { id: string; day: string; status: CallStatus; startedAt: string; finishedAt: string | null; durationMs: number | null; inputTokens: number | null; outputTokens: number | null; errorCode: string | null };
 export type Outcome = { id: string; taskId?: string; runId?: string; helpful: boolean; minutesSaved: number | null; note: string; version: number; createdAt: string; updatedAt: string };
 type RoutineClaim = { id: string; routineId: string; scopeId: string; occurrenceId: string; day: string; createdAt: string };
-type State = { version: 1; settings: GovernanceSettings; usages: UsageRecord[]; routineClaims: RoutineClaim[]; outcomes: Outcome[] };
+type State = { version: 1; settings: GovernanceSettings; usages: UsageRecord[]; routineClaims: RoutineClaim[]; outcomes: Outcome[]; budgets: BudgetSetting[] };
 type Storage = { read: (key: string, fallback?: unknown) => Promise<unknown>; update: (key: string, fn: (value: unknown) => unknown, fallback?: unknown) => Promise<unknown> };
 type ErrorWithCode = Error & { code?: unknown };
 type UsageLike = { inputTokens?: unknown; outputTokens?: unknown };
@@ -18,9 +20,11 @@ type TaskLike = { id: string; workflowId?: string | null; status?: string; artif
 type RepositoryRunLike = { id: string; status?: string; patchHash?: string | null; decision?: { status?: string } | null; events?: EventLike[]; editor?: ExecutionLike | null; review?: (ExecutionLike & { status?: string }) | null };
 
 const KEY = 'governance', MAX_CONCURRENT = 3;
+const DEFAULT_PROJECT_CALL_LIMIT = 200, DEFAULT_ASSIGNMENT_CALL_LIMIT = 12;
+const TARGET_KEYS = ['scopeId', 'projectId', 'taskId', 'runId', 'budgetRunId'];
 const fail = (message: string, code = 'GOVERNANCE_INVALID', statusCode = 400) => Object.assign(new Error(message), { code, statusCode, status: statusCode });
 const copy = <T>(value: T): T => structuredClone(value);
-const seed = (): State => ({ version: 1, settings: { version: 1, dailyCallLimit: 50, maxCallSeconds: 180, autonomousRoutines: false, maxAutonomousRunsPerDay: 3, autonomousEnabledAt: null }, usages: [], routineClaims: [], outcomes: [] });
+const seed = (): State => ({ version: 1, settings: { version: 1, dailyCallLimit: 50, maxCallSeconds: 180, autonomousRoutines: false, maxAutonomousRunsPerDay: 3, autonomousEnabledAt: null }, usages: [], routineClaims: [], outcomes: [], budgets: [] });
 function object(value: unknown, keys: string[]): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) || Object.keys(value).some(key => !keys.includes(key))) throw fail('Configurazione dei limiti non valida.');
 }
@@ -32,6 +36,21 @@ function integer(value: unknown, min: number, max: number, label: string): numbe
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw fail(`${label}: scegli un intero tra ${min} e ${max}.`);
   return value;
 }
+function target(value: BudgetTarget): BudgetTarget {
+  identifier(value.scopeId);
+  for (const key of ['projectId', 'taskId', 'runId', 'budgetRunId'] as const) if (value[key] !== undefined) identifier(value[key]);
+  if ((value.taskId && value.runId) || ((value.taskId || value.runId) && !value.projectId) || (value.budgetRunId && !value.runId)) throw fail('Il budget deve appartenere a un progetto e a un solo incarico.');
+  return { scopeId: value.scopeId, ...(value.projectId ? { projectId: value.projectId } : {}), ...(value.taskId ? { taskId: value.taskId } : {}), ...(value.runId ? { runId: value.budgetRunId || value.runId } : {}) };
+}
+// Projects have globally unique durable IDs. A legitimate scope move must not
+// create a fresh budget; scope stays attribution, not the counter's identity.
+const budgetKey = (value: BudgetTarget): string => { const item = target(value); return JSON.stringify([item.projectId ?? null, item.taskId ? 'task' : item.runId ? 'run' : 'project', item.taskId ?? item.runId ?? null]); };
+function budgetReport(state: State, value: BudgetTarget) {
+  const item = target(value), assignment = Boolean(item.taskId || item.runId), setting = state.budgets.find(entry => budgetKey(entry) === budgetKey(item));
+  const records = state.usages.filter(record => record.projectId === item.projectId && (!assignment || budgetKey(record) === budgetKey(item)));
+  const callLimit = setting?.callLimit ?? (assignment ? DEFAULT_ASSIGNMENT_CALL_LIMIT : DEFAULT_PROJECT_CALL_LIMIT);
+  return { ...item, period: 'lifetime', callLimit, version: setting?.version ?? 0, configured: Boolean(setting), used: records.length, remaining: Math.max(0, callLimit - records.length), usage: usageTotals(records) };
+}
 function settings(value: unknown): GovernanceSettings {
   object(value, ['version', 'dailyCallLimit', 'maxCallSeconds', 'autonomousRoutines', 'maxAutonomousRunsPerDay', 'autonomousEnabledAt']);
   if (typeof value.autonomousRoutines !== 'boolean') throw fail('Indica esplicitamente se abilitare le routine autonome.');
@@ -40,12 +59,23 @@ function settings(value: unknown): GovernanceSettings {
   return { version: integer(value.version, 1, Number.MAX_SAFE_INTEGER, 'Versione'), dailyCallLimit: integer(value.dailyCallLimit, 0, 1000, 'Chiamate giornaliere'), maxCallSeconds: integer(value.maxCallSeconds, 1, 1800, 'Durata massima'), autonomousRoutines: value.autonomousRoutines, maxAutonomousRunsPerDay: integer(value.maxAutonomousRunsPerDay, 0, 100, 'Routine autonome giornaliere'), autonomousEnabledAt: enabledAt };
 }
 function checked(value: unknown): State {
-  object(value, ['version', 'settings', 'usages', 'routineClaims', 'outcomes']);
+  object(value, ['version', 'settings', 'usages', 'routineClaims', 'outcomes', 'budgets']);
+  // Additive migration: older global reservations retain their original attribution.
+  if (value.budgets === undefined) value.budgets = [];
   if (value.version !== 1 || !Array.isArray(value.usages) || value.usages.length > 50000 || !Array.isArray(value.routineClaims) || value.routineClaims.length > 50000 || !Array.isArray(value.outcomes) || value.outcomes.length > 10000) throw fail('Archivio dei limiti non valido o pieno.', 'GOVERNANCE_CORRUPT', 503);
   value.settings = settings(value.settings);
+  if (!Array.isArray(value.budgets) || value.budgets.length > 10000) throw fail('Archivio dei budget non valido o pieno.', 'GOVERNANCE_CORRUPT', 503);
+  const budgetIds = new Set<string>();
+  for (const entry of value.budgets as BudgetSetting[]) {
+    object(entry, [...TARGET_KEYS, 'callLimit', 'version', 'updatedAt']);
+    const key = budgetKey(entry);
+    if (!entry.projectId || budgetIds.has(key) || !Number.isFinite(Date.parse(entry.updatedAt))) throw fail('Budget duplicato o non valido.', 'GOVERNANCE_CORRUPT', 503);
+    integer(entry.callLimit, 0, 50000, 'Limite di chiamate'); integer(entry.version, 1, Number.MAX_SAFE_INTEGER, 'Versione budget'); budgetIds.add(key);
+  }
   const usageIds = new Set<string>();
   for (const record of value.usages as UsageRecord[]) {
-    object(record, ['id', 'scopeId', 'agentId', 'kind', 'connectionId', 'day', 'status', 'startedAt', 'finishedAt', 'durationMs', 'inputTokens', 'outputTokens', 'errorCode']);
+    object(record, ['id', ...TARGET_KEYS, 'agentId', 'kind', 'connectionId', 'day', 'status', 'startedAt', 'finishedAt', 'durationMs', 'inputTokens', 'outputTokens', 'errorCode']);
+    target(record);
     identifier(record.id); identifier(record.scopeId); identifier(record.agentId); identifier(record.kind); identifier(record.connectionId);
     if (usageIds.has(record.id) || !['running', 'succeeded', 'failed', 'cancelled', 'timed_out', 'interrupted'].includes(record.status) || !/^\d{4}-\d\d-\d\d$/.test(record.day) || !Number.isFinite(Date.parse(record.startedAt)) || (record.finishedAt !== null && !Number.isFinite(Date.parse(record.finishedAt)))) throw fail('Registro delle chiamate non valido.', 'GOVERNANCE_CORRUPT', 503);
     for (const field of ['durationMs', 'inputTokens', 'outputTokens'] as const) if (record[field] !== null && (!Number.isSafeInteger(record[field]) || record[field]! < 0)) throw fail('Metriche di utilizzo non valide.', 'GOVERNANCE_CORRUPT', 503);
@@ -103,6 +133,29 @@ export function createGovernance({ storage = defaultArchive as Storage, clock = 
     return { settings: copy(state.settings), period: { day: currentDay, resetAt: new Date(Date.parse(`${currentDay}T00:00:00.000Z`) + 86400000).toISOString() }, daily: { calls: dailyCalls, remaining: Math.max(0, state.settings.dailyCallLimit - dailyCalls), autonomousRuns: routineRuns, autonomousRemaining: Math.max(0, state.settings.maxAutonomousRunsPerDay - routineRuns) }, limits: { maxConcurrentCalls: MAX_CONCURRENT }, usages: copy(state.usages.slice(-200).reverse()), usageTotals: usageTotals(state.usages), dailyUsage: usageTotals(state.usages.filter(record => record.day === currentDay)), outcomes: copy(state.outcomes.slice(-200).reverse()), feedback: feedbackTotals(state.outcomes) };
   }
   const snapshot = async () => { await initialize(); return view(checked(await storage.read(KEY, seed()))); };
+  function preflightView(state: State, payload: BudgetTarget & { requiredCalls: number }) {
+    const item = target(payload), requiredCalls = integer(payload.requiredCalls, 0, 1000, 'Chiamate previste'), daily = view(state).daily;
+    const project = item.projectId ? budgetReport(state, { scopeId: item.scopeId, projectId: item.projectId }) : null;
+    const assignment = item.taskId || item.runId ? budgetReport(state, item) : null;
+    const remaining = Math.min(daily.remaining, project?.remaining ?? Infinity, assignment?.remaining ?? Infinity);
+    const blocking = [...(daily.remaining < requiredCalls ? ['DAILY_CALL_LIMIT'] : []), ...(project && project.remaining < requiredCalls ? ['PROJECT_CALL_LIMIT'] : []), ...(assignment && assignment.remaining < requiredCalls ? ['ASSIGNMENT_CALL_LIMIT'] : [])];
+    return { target: item, requiredCalls, allowed: !blocking.length, blocking, remaining, daily: { ...daily, callLimit: state.settings.dailyCallLimit, period: 'UTC_day', resetAt: view(state).period.resetAt }, project, assignment, advisory: true };
+  }
+  async function budgets(filter: Partial<BudgetTarget> = {}) {
+    object(filter, TARGET_KEYS);
+    for (const key of TARGET_KEYS as (keyof BudgetTarget)[]) if (filter[key] !== undefined) identifier(filter[key]);
+    if (filter.taskId || filter.runId || filter.budgetRunId) target(filter as BudgetTarget);
+    await initialize(); const state = checked(await storage.read(KEY, seed()));
+    const candidates = new Map<string, BudgetTarget>();
+    for (const record of [...state.usages, ...state.budgets]) {
+      if (!record.projectId) continue;
+      const item = target(record), project = { scopeId: item.scopeId, projectId: item.projectId };
+      candidates.set(budgetKey(project), project); candidates.set(budgetKey(item), item);
+    }
+    if (filter.scopeId && filter.projectId) { const item = target(filter as BudgetTarget); candidates.set(budgetKey(item), item); const project = { scopeId: item.scopeId, projectId: item.projectId }; candidates.set(budgetKey(project), project); }
+    const entries = [...candidates.values()].filter(item => (!filter.scopeId || item.scopeId === filter.scopeId) && (!filter.projectId || item.projectId === filter.projectId) && (!filter.taskId || !item.taskId && !item.runId || item.taskId === filter.taskId) && (!filter.runId || !item.taskId && !item.runId || item.runId === (filter.budgetRunId || filter.runId))).map(item => budgetReport(state, item));
+    return { defaults: { projectCallLimit: DEFAULT_PROJECT_CALL_LIMIT, assignmentCallLimit: DEFAULT_ASSIGNMENT_CALL_LIMIT, period: 'lifetime' }, daily: { ...view(state).daily, callLimit: state.settings.dailyCallLimit }, period: view(state).period, entries, unattributedCalls: state.usages.filter(record => !record.projectId && (!filter.scopeId || record.scopeId === filter.scopeId)).length };
+  }
   async function finalize(id: string, status: CallStatus, result: unknown, errorCode: string | null): Promise<void> {
     await storage.update(KEY, raw => {
       const state = checked(raw), record = state.usages.find(item => item.id === id);
@@ -113,7 +166,25 @@ export function createGovernance({ storage = defaultArchive as Storage, clock = 
     }, seed());
   }
   return {
-    snapshot,
+    snapshot, budgets,
+    async preflight(payload: BudgetTarget & { requiredCalls: number }) {
+      object(payload, [...TARGET_KEYS, 'requiredCalls']); target(payload); integer(payload.requiredCalls, 0, 1000, 'Chiamate previste');
+      await initialize(); return preflightView(checked(await storage.read(KEY, seed())), payload);
+    },
+    async configureBudget(payload: BudgetTarget & { expectedVersion: number; callLimit: number }) {
+      object(payload, [...TARGET_KEYS, 'expectedVersion', 'callLimit']);
+      const item = target(payload); if (!item.projectId) throw fail('Seleziona un progetto per configurare il budget.');
+      integer(payload.callLimit, 0, 50000, 'Limite di chiamate'); integer(payload.expectedVersion, 0, Number.MAX_SAFE_INTEGER, 'Versione budget'); await initialize();
+      await storage.update(KEY, raw => {
+        const state = checked(raw), existing = state.budgets.find(entry => budgetKey(entry) === budgetKey(item));
+        if (payload.expectedVersion !== (existing?.version ?? 0)) throw fail('Il budget è cambiato. Ricarica prima di salvarlo.', 'VERSION_CONFLICT', 409);
+        if (!existing && state.budgets.length >= 10000) throw fail('Registro budget pieno.', 'GOVERNANCE_FULL', 413);
+        const next = { ...item, callLimit: payload.callLimit, version: (existing?.version ?? 0) + 1, updatedAt: stamp() };
+        if (existing) state.budgets.splice(state.budgets.indexOf(existing), 1, next); else state.budgets.push(next);
+        return state;
+      }, seed());
+      return budgets();
+    },
     async configure(payload: { expectedVersion: number; dailyCallLimit: number; maxCallSeconds: number; autonomousRoutines: boolean; maxAutonomousRunsPerDay: number }) {
       object(payload, ['expectedVersion', 'dailyCallLimit', 'maxCallSeconds', 'autonomousRoutines', 'maxAutonomousRunsPerDay']); await initialize();
       const state = await storage.update(KEY, raw => {
@@ -125,7 +196,7 @@ export function createGovernance({ storage = defaultArchive as Storage, clock = 
       return view(checked(state));
     },
     async execute<T>(meta: CallMeta, fn: (signal: AbortSignal) => Promise<T>, parentSignal?: AbortSignal): Promise<T> {
-      object(meta, ['scopeId', 'agentId', 'kind', 'connectionId']);
+      object(meta, [...TARGET_KEYS, 'agentId', 'kind', 'connectionId']); target(meta);
       identifier(meta.scopeId); identifier(meta.agentId); identifier(meta.kind); identifier(meta.connectionId);
       if (typeof fn !== 'function') throw fail('Esecutore non valido.');
       if (parentSignal?.aborted) throw fail('Chiamata annullata prima dell’avvio.', 'CALL_CANCELLED', 499);
@@ -136,6 +207,9 @@ export function createGovernance({ storage = defaultArchive as Storage, clock = 
         if (parentSignal?.aborted) throw fail('Chiamata annullata prima dell’avvio.', 'CALL_CANCELLED', 499);
         if (state.usages.length >= 50000) throw fail('Registro chiamate pieno. Nessuna chiamata avviata.', 'GOVERNANCE_FULL', 413);
         if (state.usages.filter(record => record.day === day()).length >= state.settings.dailyCallLimit) throw fail('Limite giornaliero di chiamate raggiunto. Nessun servizio AI è stato contattato.', 'DAILY_CALL_LIMIT', 429);
+        const allowance = preflightView(state, { ...target(meta), requiredCalls: 1 });
+        if (allowance.project && allowance.project.remaining < 1) throw fail('Budget di chiamate del progetto esaurito. Aumenta il limite prima di continuare.', 'PROJECT_CALL_LIMIT', 429);
+        if (allowance.assignment && allowance.assignment.remaining < 1) throw fail('Budget di chiamate dell’incarico esaurito. Le revisioni condividono lo stesso limite.', 'ASSIGNMENT_CALL_LIMIT', 429);
         if (Math.max(active.size, state.usages.filter(record => record.status === 'running').length) >= MAX_CONCURRENT) throw fail('Sono già attive tre chiamate AI. Attendi il completamento.', 'CALL_CONCURRENCY_LIMIT', 429);
         state.usages.push({ ...copy(meta), id: reservationId, day: day(), status: 'running', startedAt: stamp(), finishedAt: null, durationMs: null, inputTokens: null, outputTokens: null, errorCode: null });
         return state;

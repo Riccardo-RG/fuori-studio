@@ -1,0 +1,16 @@
+.workflow-fields-editor,.workflow-input-form{display:grid;gap:14px;min-width:0;margin:0;border:1px solid #d7e1cb;border-radius:8px;padding:16px;color:#4f663e}
+.workflow-fields-editor legend,.workflow-input-form legend{padding:0 6px;font-size:13px;font-weight:600}
+.workflow-field-editor{display:grid;gap:10px;padding:12px;background:#f4f7ed;border-radius:6px;min-width:0}
+.workflow-field-editor>label,.workflow-input-form>label{display:block;font-size:12px;font-weight:600;line-height:1.6}
+.workflow-field-editor input:not([type=checkbox]),.workflow-field-editor textarea,.workflow-input-form textarea{display:block;box-sizing:border-box;width:100%;margin-top:5px;min-height:42px;border:1px solid #d7e1cb;border-radius:6px;padding:9px 11px;background:#fafbf5;color:#4f663e;font:inherit;font-weight:400;line-height:1.6}
+.workflow-field-editor textarea,.workflow-input-form textarea{resize:vertical;max-height:360px}
+.workflow-field-editor .checkbox-label{display:flex;align-items:center;gap:8px}
+.workflow-field-editor input[type=checkbox]{accent-color:var(--green);width:16px;height:16px;flex-shrink:0}
+.workflow-fields-editor .form-note,.workflow-input-form .form-note,.workflow-field-editor small{margin:0;font-size:11px;line-height:1.6;color:#78896b}
+.workflow-field-editor :is(input,textarea):focus-visible,.workflow-input-form textarea:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+.workflow-input-summary{border:1px solid #d7e1cb;border-radius:7px;padding:12px 14px;font-size:12px}
+.workflow-input-summary summary{cursor:pointer;color:#4f663e;font-weight:600}
+.workflow-input-summary dt{margin-top:12px;font-weight:600}
+.workflow-input-summary dd{margin:4px 0 0}
+.workflow-input-summary pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:600px){.workflow-field-editor input:not([type=checkbox]),.workflow-field-editor textarea,.workflow-input-form textarea{font-size:16px}.workflow-fields-editor,.workflow-input-form{padding:12px}}

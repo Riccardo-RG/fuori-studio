@@ -3,6 +3,7 @@ import { agents } from './data.js';
 import { scopeIdentity } from './experience-state.js';
 import { icon } from './studio-icons.js';
 import { createEvaluationsPanel } from './evaluations.js';
+import { workflowFieldEditorHTML, readWorkflowFieldEditor, workflowInputFormHTML, readWorkflowInputValues } from './workflow-fields.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const typeNames = { fact:'Informazione', preference:'Preferenza', decision:'Decisione', pattern:'Metodo ricorrente' };
@@ -384,10 +385,10 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
     if (locked()) return;
     const home = item.scopeId || currentScope;
     const notice=item.origin?ui`<p class="knowledge-form-intro">Rivedi il metodo prima di riutilizzarlo. Copiamo brief e istruzioni dei passaggi; le risposte AI, le memorie e i documenti non vengono copiati.</p>${item.truncated?.length?ui`<p class="knowledge-form-error">Alcuni campi sono stati abbreviati per rispettare i limiti della procedura. Rivedili prima di salvare.</p>`:''}`:'';
-    const body = notice + ui`<p class="knowledge-form-intro">Salvata in <strong>${escape(scopeName(home))}</strong>. La procedura guida la chat e può definire i passaggi di un incarico. Le capacità disponibili sono analisi e redazione; non esegue azioni esterne.</p>${field(t('Titolo'), 'title', item.title, {required:true,max:140})}${field(t('A cosa serve'), 'description', item.description, {area:true,max:2000,rows:2})}${field(t('Materiali e informazioni di partenza'), 'input', item.input, {area:true,required:true,max:4000,rows:3,hint:t('Esempio: idea di prodotto, obiettivo, destinatari, vincoli e scadenza.')})}<div class="knowledge-steps" id="knowledge-steps">${(item.steps?.length ? item.steps : [{}]).map(stepMarkup).join('')}</div><button type="button" class="knowledge-button" id="knowledge-add-step">＋ Aggiungi un passaggio</button>${field(t('Consegna finale attesa'), 'output', item.output, {area:true,required:true,max:4000,rows:3})}<div class="knowledge-field"><label for="knowledge-field-status">Stato</label><select id="knowledge-field-status" name="status"><option value="draft"${item.status !== 'ready' ? ' selected' : ''}>Bozza · da rivedere</option><option value="ready"${item.status === 'ready' ? ' selected' : ''}>Pronta per chat e incarichi</option></select></div>${item.origin?ui`<p class="knowledge-source">${escape(item.source)}</p><p class="knowledge-hint">La procedura resta nell’ambito della consegna. Potrai condividerla esplicitamente dopo averla salvata.</p>`:sourceFields(item)+sharingFields({...item,scopeId:home})}`;
-    openDialog(item.id ? t('Rivedi la procedura') : t('Un metodo da riutilizzare'), body, item.id ? t('Salva modifiche') : t('Salva procedura'), async data => {
+    const body = notice + ui`<p class="knowledge-form-intro">Salvata in <strong>${escape(scopeName(home))}</strong>. La procedura guida la chat e può definire i passaggi di un incarico. Le capacità disponibili sono analisi e redazione; non esegue azioni esterne.</p>${field(t('Titolo'), 'title', item.title, {required:true,max:140})}${field(t('A cosa serve'), 'description', item.description, {area:true,max:2000,rows:2})}${field(t('Materiali e informazioni di partenza'), 'input', item.input, {area:true,required:true,max:4000,rows:3,hint:t('Esempio: idea di prodotto, obiettivo, destinatari, vincoli e scadenza.')})}${workflowFieldEditorHTML(item.inputFields || [])}<div class="knowledge-steps" id="knowledge-steps">${(item.steps?.length ? item.steps : [{}]).map(stepMarkup).join('')}</div><button type="button" class="knowledge-button" id="knowledge-add-step">＋ Aggiungi un passaggio</button>${field(t('Consegna finale attesa'), 'output', item.output, {area:true,required:true,max:4000,rows:3})}<div class="knowledge-field"><label for="knowledge-field-status">Stato</label><select id="knowledge-field-status" name="status"><option value="draft"${item.status !== 'ready' ? ' selected' : ''}>Bozza · da rivedere</option><option value="ready"${item.status === 'ready' ? ' selected' : ''}>Pronta per chat e incarichi</option></select></div>${item.origin?ui`<p class="knowledge-source">${escape(item.source)}</p><p class="knowledge-hint">La procedura resta nell’ambito della consegna. Potrai condividerla esplicitamente dopo averla salvata.</p>`:sourceFields(item)+sharingFields({...item,scopeId:home})}`;
+    openDialog(item.id ? t('Rivedi la procedura') : t('Un metodo da riutilizzare'), body, item.id ? t('Salva modifiche') : t('Salva procedura'), async (data,form) => {
       const titles = data.getAll('stepTitle'), owners = data.getAll('stepAgent'), outputs = data.getAll('stepOutput');
-      const fields={title:data.get('title').trim(),description:data.get('description').trim(),input:data.get('input').trim(),output:data.get('output').trim(),status:data.get('status'),steps:titles.map((title,index)=>({title:title.trim(),agentId:owners[index],output:outputs[index].trim()}))};
+      const fields={title:data.get('title').trim(),description:data.get('description').trim(),input:data.get('input').trim(),output:data.get('output').trim(),status:data.get('status'),inputFields:readWorkflowFieldEditor(form),steps:titles.map((title,index)=>({title:title.trim(),agentId:owners[index],output:outputs[index].trim()}))};
       if(item.origin){const result=await learnRequest('save',{taskId:item.origin.taskId,expectedVersion:item.origin.expectedVersion,workflow:fields});setSnapshot(result.snapshot);activeTab='workflows';query='';$('#knowledge-search').value='';syncScopes();render();window.dispatchEvent(new CustomEvent('studio-workspace-changed'));toast(t('Procedura salvata. La trovi in Memoria → Procedure.'));}
       else await save('saveWorkflow',{...(item.id?{id:item.id,expectedVersion:item.version}:{}),...fields,scopeId:home,source:data.get('source').trim(),sharedWith:data.getAll('sharedWith')},t('Procedura salvata.'));
     });
@@ -475,6 +476,13 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
   async function useWorkflow(item) {
     if (locked() || item.status !== 'ready') return;
     const prompt = t('Vorrei usare la procedura «{0}».\n\nMateriali e informazioni necessari:\n{1}\n\nAiutami a raccogliere gli elementi mancanti e ad applicarla al mio caso. Non dare per eseguite azioni esterne.', {0:item.title,1:item.input || t('Da definire insieme.')});
+    if (item.inputFields?.length) {
+      localizeDialog = () => useWorkflow(item);
+      openDialog(t('Compila la procedura'), workflowInputFormHTML(item), t('Usa nella chat'), async (_data,form) => {
+        await onUseWorkflow({scopeId:currentScope,workflowId:item.id,prompt,inputValues:readWorkflowInputValues(form),expectedWorkflowVersion:item.version});
+      });
+      return;
+    }
     try { await onUseWorkflow({scopeId:currentScope,workflowId:item.id,prompt}); }
     catch (error) { toast(error.message || t('Non è stato possibile preparare la procedura in chat.')); }
   }
@@ -544,5 +552,5 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
     }catch(error){toast(error.message);}
     finally{switching=false;syncControls();}
   }
-  return { load, setScope, fromApproved, newMemory(){if(!locked())openMemory();}, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
+  return { load, setScope, fromApproved, getWorkflow(id) { return snapshot.workflows.find(item => item.id === id); },async openEntry(tab,id){await load();if(locked())return false;activeTab=tab;const item=snapshot[tab]?.find(item=>item.id===id);if(!item)return false;render();if(tab==='workflows')openWorkflow(item);else openMemory(item);return true;}, newMemory(){if(!locked())openMemory();}, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
 }

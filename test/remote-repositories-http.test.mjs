@@ -74,7 +74,9 @@ let input='';process.stdin.on('data',data=>input+=data);process.stdin.on('end',(
   const repository = registered.repositories[0]; assert.equal(repository.dirty, true); assert.deepEqual(repository.checks, configured); assert.equal(repository.head, base); assert.equal(repository.executionTarget, connection.deviceId);
   let snapshot = await owner('/api/repositories', { action: 'create', payload: { repositoryId: repository.id, title: 'Correct value remotely', brief: 'Set the value to 2 and run the authorized test.' } }), run = snapshot.runs[0];
   await request('/api/repositories', { owner: true, payload: { action: 'approve', payload: { id: run.id, expectedVersion: run.version } } }, 409);
-  await owner('/api/repositories', { action: 'start', payload: { id: run.id, expectedVersion: run.version } });
+  const preview = await owner('/api/execution/preview', { kind: 'repository', id: run.id, expectedVersion: run.version });
+  assert.equal(preview.budget.allowed, true); assert.equal(preview.requiredCalls, 1, 'only the repository worker is authorized; no text reviewer can run');
+  await owner('/api/repositories', { action: 'start', payload: { id: run.id, expectedVersion: run.version, previewId: preview.previewId } });
   let processed;
   for (let attempt = 0; attempt < 150; attempt++) { processed = await worker.pollOnce(); if (processed.status === 'processed') break; await new Promise(done => setTimeout(done, 20)); } assert.equal(processed.status, 'processed');
   for (let attempt = 0; attempt < 150; attempt++) { snapshot = await owner('/api/repositories'); run = snapshot.runs[0]; if (run.status !== 'running') break; await new Promise(done => setTimeout(done, 20)); }

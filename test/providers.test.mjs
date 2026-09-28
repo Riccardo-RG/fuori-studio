@@ -11,7 +11,7 @@ const json = (value, options) => new Response(JSON.stringify(value), { headers: 
 async function fixture(t, fetchImpl = async () => json(completion())) {
   const directory = await mkdtemp(join(tmpdir(), 'fuori-providers-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  return { directory, file: join(directory, 'providers.json'), store: createProviderStore({ directory, fetchImpl }) };
+  return { directory, file: join(directory, 'providers.json'), store: createProviderStore({ directory, fetchImpl, executionPolicy: (_meta, invoke, signal) => invoke(signal) }) };
 }
 async function connect(store, type = 'deepseek', more = {}) {
   const result = await store.mutate('saveConnection', { name: `Test ${type}`, type, model: `${type}-model`, apiKey: KEY, ...more });

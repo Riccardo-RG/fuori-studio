@@ -35,7 +35,7 @@ async function fixture(t, overrides = {}) {
     ...overrides.runtime,
   };
   const authorizeExecution = async () => { calls.authorization.push(true); if (overrides.authorizeExecution) return overrides.authorizeExecution(); };
-  const service = createRepositoryWork({ storage, workspace, operations, providers, runtime, remote: overrides.remote, mode: overrides.mode || 'local', authorizeExecution });
+  const service = createRepositoryWork({ storage, workspace, operations, providers, runtime, remote: overrides.remote, mode: overrides.mode || 'local', authorizeExecution, executeEditor: overrides.executeEditor || ((_meta, invoke, signal) => invoke(signal)) });
   const register = (extra = {}) => service.register({ projectId: 'owned-project', scopeId: 'business', path: '/trusted/repository', checks: configured, ...extra });
   async function create() { const state = await register(); return (await service.create({ repositoryId: state.repositories[0].id, title: 'Improve feature', brief: 'Implement the requested behavior and verify it.' })).runs.at(-1); }
   return { storage, workspace, operations, providers, runtime, service, calls, register, create };
@@ -306,4 +306,48 @@ test('publication candidates require current human approval, valid checks and th
   await f.storage.write(`repository-work/patch/${run.id}`, artifact);
   await f.service.requestChanges({ id: run.id, expectedVersion: approved.version, feedback: 'Revise before publishing.' });
   await assert.rejects(f.service.approvedPublication({ id: run.id }), { code: 'REPOSITORY_APPROVAL_BLOCKED' });
+});
+
+test('repository preview is read-only and its selected contexts stay pinned through editor and reviewer', async t => {
+  const f = await fixture(t);
+  const workspace = await f.workspace.mutate('saveMemory', { scopeId: 'business', title: 'Optional note', content: 'EXCLUDED_PRIVATE_NOTE', type: 'preference', status: 'confirmed', agentIds: [] });
+  const memory = workspace.memories[0], queued = await f.create();
+  const selection = { excludeMemoryIds: [memory.id], excludeSourceIds: [] };
+  const preview = await f.service.preview({ id: queued.id, expectedVersion: queued.version, selection });
+  assert.equal(preview.steps.length, 2); assert.equal(preview.budgetTarget.budgetRunId, queued.id);
+  assert.equal(f.calls.edit.length + f.calls.check.length + f.calls.review.length, 0);
+  assert.equal((await f.service.snapshot()).runs[0].version, queued.version);
+  assert.doesNotMatch(JSON.stringify(preview.steps.map(step => step.context)), /EXCLUDED_PRIVATE_NOTE/);
+  assert.match(JSON.stringify(preview.steps.map(step => step.availableContext)), /EXCLUDED_PRIVATE_NOTE/, 'excluded candidates stay visible so the owner can include them again');
+  await f.workspace.mutate('saveMemory', { scopeId: 'business', title: 'New after preview', content: 'NOT_PREVIEWED_NEW_NOTE', type: 'preference', status: 'confirmed', agentIds: [] });
+  await f.service.start({ id: queued.id, expectedVersion: queued.version, previewPlan: preview });
+  const run = (await settled(f.service)).runs[0]; assert.equal(run.status, 'review');
+  for (const call of [...f.calls.edit, ...f.calls.review]) assert.doesNotMatch(call.prompt, /EXCLUDED_PRIVATE_NOTE|NOT_PREVIEWED_NEW_NOTE/);
+  const revision = (await f.service.requestChanges({ id: run.id, expectedVersion: run.version, feedback: 'Refine the patch' })).runs.at(-1);
+  assert.deepEqual(revision.contextSelection, selection);
+});
+
+test('local editor and reviewer calls retain canonical budget identity across repository revisions', async t => {
+  const charged = [], f = await fixture(t, { executeEditor: async (meta, invoke, signal) => { charged.push(meta); return invoke(signal); } });
+  const queued = await f.create();
+  await f.service.start({ id: queued.id, expectedVersion: queued.version });
+  const run = (await settled(f.service)).runs[0];
+  const revision = (await f.service.requestChanges({ id: run.id, expectedVersion: run.version, feedback: 'Refine the patch' })).runs.at(-1);
+  const target = await f.service.budgetTarget({ id: revision.id });
+  assert.equal(target.budgetRunId, run.id); assert.equal(target.runId, revision.id); assert.equal(target.projectId, 'owned-project');
+  await f.service.start({ id: revision.id, expectedVersion: revision.version }); await settled(f.service);
+  for (const meta of [...charged, ...f.calls.review]) { assert.equal(meta.budgetRunId, run.id); assert.equal(meta.projectId, 'owned-project'); }
+  assert.deepEqual(charged.map(item => item.runId), [run.id, revision.id]);
+});
+
+test('a denied editor budget prevents remote dispatch and local inference', async t => {
+  const deny = async () => { throw Object.assign(Error('Assignment budget exhausted'), { code: 'ASSIGNMENT_CALL_LIMIT' }); };
+  const local = await fixture(t, { executeEditor: deny }), queued = await local.create();
+  await local.service.start({ id: queued.id, expectedVersion: queued.version });
+  assert.equal((await settled(local.service)).runs[0].status, 'failed'); assert.equal(local.calls.edit.length, 0); assert.equal(local.calls.review.length, 0);
+  const setup = remoteFixture(), remote = await fixture(t, { remote: setup.remote, mode: 'hybrid', executeEditor: deny });
+  const repository = (await remote.service.register({ projectId: 'owned-project', scopeId: 'business', executionTarget: 'worker', repositoryAlias: 'product' })).repositories[0];
+  const run = (await remote.service.create({ repositoryId: repository.id, title: 'Never dispatch', brief: 'Budget has no remaining calls.' })).runs[0];
+  await remote.service.start({ id: run.id, expectedVersion: run.version });
+  assert.equal((await settled(remote.service)).runs[0].status, 'failed'); assert.equal(setup.requests.filter(item => item.prompt).length, 0);
 });

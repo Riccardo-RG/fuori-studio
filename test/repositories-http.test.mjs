@@ -41,7 +41,9 @@ let input='';process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{if
   let snapshot = await request('/api/repositories',{action:'create',payload:{repositoryId:registered.repositories[0].id,title:'Correct value',brief:'Set value to 2.'}});
   let run = snapshot.runs[0];
   await request('/api/repositories',{action:'approve',payload:{id:run.id,expectedVersion:run.version}},409);
-  snapshot=await request('/api/repositories',{action:'start',payload:{id:run.id,expectedVersion:run.version}});
+  const preview=await request('/api/execution/preview',{kind:'repository',id:run.id,expectedVersion:run.version});
+  assert.equal(preview.budget.allowed,true); assert.equal(preview.id,run.id);
+  snapshot=await request('/api/repositories',{action:'start',payload:{id:run.id,expectedVersion:run.version,previewId:preview.previewId}});
   for(let attempt=0;attempt<150;attempt++){snapshot=await request('/api/repositories');run=snapshot.runs[0];if(run.status!=='running')break;await new Promise(done=>setTimeout(done,40));}
   assert.equal(run.status,'review',JSON.stringify(run)); assert.equal(run.checks[0].status,'passed'); assert.equal(run.checks[0].exitCode,0); assert.match(run.checks[0].output,/pass 1|tests 1/);
   assert.equal(Object.hasOwn(run,'patch'),false); assert.equal(Object.hasOwn(run,'cwd'),false);
@@ -51,5 +53,6 @@ let input='';process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{if
   snapshot=await request('/api/repositories',{action:'approve',payload:{id:run.id,expectedVersion:run.version}});run=snapshot.runs[0];assert.equal(run.status,'completed');
   const memory=await request('/api/repositories',{action:'proposeMemory',payload:{id:run.id,expectedVersion:run.version,title:'Value convention',content:'Use the agreed value in this project.',type:'decision'}});
   assert.equal(memory.workspace.memories[0].status,'proposed'); assert.equal(memory.workspace.memories[0].scopeId,'development');
-  await request('/api/repositories',{action:'start',payload:{id:run.id,expectedVersion:run.version}},409);
+  await request('/api/execution/preview',{kind:'repository',id:run.id,expectedVersion:run.version},409);
+  await request('/api/repositories',{action:'start',payload:{id:run.id,expectedVersion:run.version,previewId:preview.previewId}},409);
 });

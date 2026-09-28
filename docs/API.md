@@ -16,6 +16,9 @@ Owner writes use `POST` and `Content-Type: application/json`. Local mode require
 | `GET /healthz` | Public minimal `{ok:true}` after host/origin checks; `503` when stopping or archive key-check fails |
 | `GET /api/operations` | `{version, projects, tasks, routines, scheduler}` |
 | `GET /api/providers` | Redacted `{version, connections, assignments, policies}`; never API keys |
+| `GET /api/search?scopeId=…&q=…&kinds=…&offset=0&limit=30` | Local scoped results, provenance, original targets, paging and partial-history indicator |
+| `GET /api/search/original?scopeId=…&sourceScopeId=…&kind=…&id=…&conversationId=…` | Visibility-revalidated saved original, bounded blocks and truncation indicator |
+| `GET /api/budgets` | Daily allowance, project/assignment lifetime limits and usage, defaults and unattributed calls |
 
 A configured provider is not necessarily authenticated, funded or reachable. Codex availability uses a separate CLI login check. Provider token counts are reports, not billing reconciliation.
 
@@ -41,7 +44,26 @@ A configured provider is not necessarily authenticated, funded or reachable. Cod
 
 `POST /api/conversation/scope {scopeId}` selects an existing scope. `POST /api/conversation/new {}` archives and resets the selected conversation.
 
-`POST /api/chat {message, scopeId, workflowId?}` returns Server-Sent Events. Events include `message`, `status`, `context`, `memory`, `notice`, `error`, and `done`; each event is JSON in a `data:` frame. Scope and procedure are checked before streaming begins. Chat disconnect cancels its active request. A chat message does not create a persistent assignment.
+`POST /api/chat {message, scopeId, workflowId?, previewId}` returns Server-Sent Events. Obtain the receipt from the execution preview first. Events include `message`, `status`, `context`, `memory`, `notice`, `error`, and `done`; each event is JSON in a `data:` frame. Scope, procedure and receipt are checked before streaming begins. Chat disconnect cancels its active request. A chat message does not create a persistent assignment.
+
+## Search
+
+Search defaults to the supplied scope; `scopeId=*` explicitly searches all owner scopes. `kinds` is an optional comma-separated subset of `conversation,memory,decision,document,task,deliverable,repository,workflow`. Queries allow 300 characters and 32 terms; `limit` is 1–100 and `offset` is 0–100,000. The response includes `results`, `total`, `hasMore`, `partial` and `localOnly`. Memories/workflows follow explicit sharing; other records remain in their owning scope. Original retrieval checks visibility again. Supply `conversationId` for a conversation message. These GET routes neither start AI nor switch the active conversation. See [local search](SEARCH.md).
+
+## Execution preview
+
+`POST /api/execution/preview` requires owner mutation authorization and an idle studio, but makes no AI call. Its target is one of:
+
+```text
+{kind:"chat", message, scopeId, workflowId?, agentIds?, projectId?, inputValues?, expectedWorkflowVersion?, selection?}
+{kind:"task", id, expectedVersion?, selection?}
+{kind:"repository", id, expectedVersion, selection?}
+{kind:"plan", projectId, brief, selection?}
+```
+
+`selection` accepts `excludeMemoryIds`, `excludeSourceIds` (at most 200 unique IDs each), and the chat-only `includeHistory` boolean. Chat defaults to the required `nova` coordinator; authorized specialist IDs may be selected explicitly. Project attribution must belong to the current scope. Exclusions never expand permissions or remove necessary inherited evidence.
+
+The response returns a ten-minute, single-use `previewId`, `expiresAt`, work identity, participating roles, prepared context/provenance, provider/destination details and an advisory call-budget preflight. Pass `previewId` to the matching chat, task start, repository start or plan draft request. The server rebuilds and compares the prepared plan before consuming the receipt. Missing, expired, mismatched or changed previews return `409` before dispatch; clients must refresh and review. Receipts are lost on server restart. Each actual dispatch still performs its own atomic budget reservation. See [execution preview](EXECUTION_PREVIEW.md).
 
 ## Projects and assignments
 
@@ -51,20 +73,22 @@ A configured provider is not necessarily authenticated, funded or reachable. Cod
 | --- | --- |
 | `createProject` | `{title, description?, scopeId, kind?: "owned" or "client", createScope?: boolean}` |
 | `saveProject` | `{id, expectedVersion, title?, description?, scopeId?, kind?}` |
-| `createTask` | `{projectId, title, brief?, agentId?, workflowId?, template?}` |
+| `createTask` | `{projectId, title, brief?, agentId?, workflowId?, template?, inputValues?, expectedWorkflowVersion?}` |
 | `approveTask` | `{id, expectedVersion, feedback?}` |
 | `requestChanges` | `{id, expectedVersion, feedback}` |
 | `restartTask` | `{id, expectedVersion}` |
-| `createRoutine` | `{projectId, title, brief?, agentId?, workflowId?, intervalHours?, nextRunAt?, enabled?}` |
+| `createRoutine` | `{projectId, title, brief?, agentId?, workflowId?, inputValues?, expectedWorkflowVersion?, intervalHours?, nextRunAt?, enabled?}` |
 | `updateRoutine` | `{id, expectedVersion, ...changedRoutineFields}` |
 
 Responses are operations snapshots. IDs are generated by the server. Projects default to `owned`. With `createScope: true`, `scopeId` identifies the parent container; a dedicated project scope is created and its ID is stored on the project. With `false` or omission, the selected existing scope is used. Project names for dedicated scopes are limited to 100 characters. A project with tasks/routines cannot change scope.
 
 Task steps come from the selected ready procedure, the built-in `template: "product-brief"` (brief → supplied-material analysis → product proposal → delivery), or the single-agent brief. A template and workflow ID cannot be combined. Clients cannot post internal step outputs or approve a task through a generated model response. Internal store actions such as `completeStep`, `submitArtifact`, `failTask` and `claimDueRoutine` are not HTTP-accessible.
 
+`saveWorkflow` can include optional `inputFields`: up to four `{key,label,required,defaultValue}` definitions for `materials`, `objective`, `constraints`, and `deliverable`. When using a fielded workflow, supply raw `inputValues` and its current `expectedWorkflowVersion`; the server validates required/default values and compiles the trusted stored snapshot. `updateRoutine` accepts the same per-use fields when changing a workflow. Client-supplied compiled `workflowInputs` are not accepted. See [workflow field limits and substitution](WORKFLOW_FIELDS.md).
+
 | Endpoint | Payload / behavior |
 | --- | --- |
-| `POST /api/tasks/run` | `{id, expectedVersion?}`; preflights access, starts background work, returns a snapshot immediately |
+| `POST /api/tasks/run` | `{id, expectedVersion?, previewId}`; consumes the reviewed preview, preflights access, starts background work and returns a snapshot immediately |
 | `POST /api/tasks/pause` | `{id, expectedVersion?}`; cancels the unfinished request and retains completed steps |
 | `POST /api/tasks/memory` | `{id, title, content, type?: "pattern" or "decision"}`; creates a proposed note from a completed approved delivery; returns workspace snapshot |
 
@@ -144,14 +168,14 @@ register       { projectId, scopeId, path, checks: [{label, program, args}] }
 register       { projectId, scopeId, executionTarget: deviceId, repositoryAlias }
 refresh        { id, expectedVersion }
 create         { repositoryId, title, brief }
-start          { id, expectedVersion }
+start          { id, expectedVersion, previewId }
 pause          { id, expectedVersion }
 approve        { id, expectedVersion }
 requestChanges { id, expectedVersion, feedback }
 proposeMemory  { id, expectedVersion?, title, content, type: "decision" | "pattern" }
 ```
 
-Start durably claims one queued run and returns before execution completes. Poll the GET endpoint for stage/check/review updates. Revision creates a new queued run with a parent link and preserves the earlier artifact. Approval checks the immutable patch hash and actual configured check results. It never publishes or merges. The memory response includes the workspace snapshot alongside the repository snapshot. `GET /api/repositories/patch?id=…` returns an authenticated text attachment; missing, corrupted or unavailable patches fail closed.
+Start consumes the matching execution preview, durably claims one queued run and returns before execution completes. Raw `selection`, `contextSelection` or `previewPlan` cannot be posted to bypass preview. Poll the GET endpoint for stage/check/review updates. Revision creates a new queued run with a parent link and preserves the earlier artifact, context exclusions and original assignment budget. Approval checks the immutable patch hash and actual configured check results. It never publishes or merges. The memory response includes the workspace snapshot alongside the repository snapshot. `GET /api/repositories/patch?id=…` returns an authenticated text attachment; missing, corrupted or unavailable patches fail closed.
 
 Remote registration gets its checks from the worker's local policy; browser paths and commands are refused. Refresh updates the recorded HEAD and policy after checking the worker. Creating or starting a remote run requires the current manifest and authorized scope.
 
@@ -170,7 +194,7 @@ Only `repository` capability accepts them. Results allow an 8 MiB request and ca
 
 `POST /api/workflows/learn {action,payload}` requires owner mutation authorization and an idle studio. `preview` accepts `{taskId,expectedVersion}` and returns `{origin,truncated,workflow}` without saving anything or calling an AI service. Only the latest approved text delivery of a completed task qualifies. Brief and step instructions become editable workflow fields; model outputs, documents and memory contents are not copied.
 
-`save` accepts `{taskId,expectedVersion,workflow:{title,description,input,output,steps,status}}` and returns `{snapshot,workflowId}`. Steps contain `{title,agentId,output}`; status is `draft` or `ready`. The server rechecks approval, task version and original context references. Restricted, unavailable or changed context blocks derivation. Scope and provenance are server assigned, and initial sharing is empty. Submitted scope, sharing, source or existing workflow identifiers are rejected. The resulting record uses the existing versioned workflow store and portability format. See [reusable workflows](PRODUCTIVITY.md).
+`save` accepts `{taskId,expectedVersion,workflow:{title,description,input,output,steps,status,inputFields?}}` and returns `{snapshot,workflowId}`. Steps contain `{title,agentId,output}`; status is `draft` or `ready`. The server rechecks approval, task version and original context references. Restricted, unavailable or changed context blocks derivation. Scope and provenance are server assigned, and initial sharing is empty. Submitted scope, sharing, source or existing workflow identifiers are rejected. The resulting record uses the existing versioned workflow store and portability format. See [reusable workflows](PRODUCTIVITY.md) and [field definitions](WORKFLOW_FIELDS.md).
 
 ## Maintenance
 
@@ -180,7 +204,7 @@ Only `repository` capability accepts them. Results allow an 8 MiB request and ca
 
 ## Dependency plans
 
-`POST /api/plans {action:"draft",payload:{projectId,brief}}` makes one explicit coordinator call and returns a validated proposal with `id`, `title`, `nodes`, project ID and a fifteen-minute expiry. Nodes contain a key, title, brief, responsible agent and ordered `dependsOn` keys. A proposal is not a task and does not authorize execution.
+`POST /api/plans {action:"draft",payload:{projectId,brief,previewId}}` consumes the matching execution preview, makes one explicit coordinator call charged to the project, and returns a validated proposal with `id`, `title`, `nodes`, project ID and a fifteen-minute expiry. The proposal's expiry is separate from the preview receipt's ten-minute lifetime. Nodes contain a key, title, brief, responsible agent and ordered `dependsOn` keys. A proposal is not a task and does not authorize execution.
 
 `POST /api/plans {action:"commit",payload:{id}}` atomically creates queued tasks from that exact proposal. It makes no AI call. Cycles, missing references, duplicate keys and invalid roles are rejected. Created tasks carry `planId`, `planTitle`, predecessor task IDs and inherited source evidence. Starting a dependent task requires each predecessor's latest delivery to be approved. Each original memory and document evidence set is revalidated before merging context references or dispatching a call. Fresh retrieval cannot conceal an older source version used to draft a task or predecessor result.
 
@@ -193,6 +217,8 @@ At most twenty proposals can await review; the limit is checked before a coordin
 `POST /api/governance {action:"configure",payload:{expectedVersion,dailyCallLimit,maxCallSeconds,autonomousRoutines,maxAutonomousRunsPerDay}}` saves limits while idle. Enabling autonomy establishes a server-side opt-in timestamp. Only enabled routine tasks created after that timestamp can start automatically.
 
 `POST /api/governance {action:"saveOutcome",payload:{taskId|runId,helpful,minutesSaved?,note?,expectedVersion?}}` records feedback for an existing approved delivery. Exactly one entity ID is required. Missing minutes remain unknown, not zero. Both mutations return a refreshed governance snapshot.
+
+`POST /api/budgets {action:"configureBudget",payload:{projectId,taskId?|runId?,callLimit,expectedVersion}}` sets a project or assignment lifetime ceiling while idle. Omit both assignment IDs for a project limit; otherwise supply exactly one. The server derives trusted scope and revision ancestry from stored records and checks project ownership. Limits allow 0–50,000 calls; version `0` creates a previously unconfigured limit. Defaults are 200 project calls and 12 assignment calls, enforced alongside the daily installation allowance. Failed and interrupted reservations remain charged; revisions do not reset usage. Missing token reports stay unknown. See [budgets and atomic enforcement](BUDGETS.md).
 
 ## Sources and read-only connectors
 

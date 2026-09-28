@@ -32,6 +32,10 @@ console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',tex
   });
   const base = `http://127.0.0.1:${port}`;
   async function request(path, body, expected = 200) {
+    if (path === '/api/chat' && expected === 200) {
+      const receipt = await request('/api/execution/preview', { kind: 'chat', ...body });
+      body = { ...body, previewId: receipt.previewId };
+    }
     const response = await fetch(base + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Fuori-Studio': 'local' }, body: JSON.stringify(body) } : {});
     assert.equal(response.status, expected);
     return response.headers.get('content-type')?.includes('text/event-stream') ? response.text() : response.json();

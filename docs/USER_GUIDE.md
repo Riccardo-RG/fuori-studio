@@ -1,6 +1,6 @@
 # Operating the studio
 
-The interface is Italian. This guide names its visible controls so they are easy to find.
+Choose Italian or English in the top bar. This guide includes the Italian control names where useful; saved names, conversations and documents keep their original language.
 
 ## Your living studio
 
@@ -38,17 +38,31 @@ Open **Progetti** and create your product. `Owned` is the default classification
 
 A project is a work container; connect a committed local source checkout separately in **Repository**. Use **Pianifica con Riccardo** to review a dependency plan before creating its queued assignments. Do not enter an API key into a project brief, memory, task, or chat. Use the password field in **Servizi AI**.
 
+## Find saved work
+
+Use **Cerca nello studio / Search the studio** or **Command/Control + Shift + F** to search current and archived conversations, memories and decisions, documents, workflows, assignments, deliveries and repository runs. Search starts in the active scope and includes explicitly shared memories/workflows. Choose **All scopes** only when you want to search the whole owner archive.
+
+Open a result to read its saved original, source scope and provenance. Archived chat previews leave the active conversation intact; supported current results also offer **Open in studio**. Search uses local retrieval, with no AI call or usage charge. See [search behavior and limits](SEARCH.md).
+
+## Review before starting
+
+Sending a chat message or starting a task, repository run or AI plan opens **Cosa sa questo agente? / What does this agent know?**. Inspect the selected memories, document passages, history, providers and execution destinations. For chat, the coordinator is required; additional specialists are optional, and you can disable previous conversation history or attribute calls to a project in the current scope.
+
+Uncheck eligible memories or sources to exclude them for this work, then choose **Refresh preview** and **Confirm and start**. Preparing or refreshing makes no AI call. A preview lasts ten minutes and must be refreshed when its work, context, service or budget changes. A required earlier result can already contain excluded information; its evidence cannot be silently removed. Prepare an independent assignment when you need to stop depending on such a result. See [preview controls and inherited-context limits](EXECUTION_PREVIEW.md).
+
 ## Assignments and review
 
 Create an assignment with a concrete brief: intended audience, available facts, constraints, and acceptance criteria. Choose one responsible agent, or a ready procedure whose steps assign the relevant roles. A procedure must be available in the project's scope.
 
-Starting sends authorized context to the configured services. Work continues if you reload or close the browser, provided the server stays running. Inspect step status and returned usage in the task detail. **Pause** cancels the unfinished call; **Resume** keeps completed steps. If source context changed, restart from the beginning. When a procedure itself changed, create a new task from its current version.
+Confirming the start preview sends authorized context to the configured services. Work continues if you reload or close the browser, provided the server stays running. Inspect step status and returned usage in the task detail. **Pause** cancels the unfinished call; **Resume** keeps completed steps and opens a new preview. If source context changed, restart from the beginning; inherited plan or predecessor evidence may require an independent task. When a procedure itself changed, create a new task from its current version.
 
 In **Da decidere**, read the entire delivery and check claims that require outside evidence. Approve acceptable output or request changes with specific feedback. Previous versions remain visible. Markdown export produces a local download; it does not publish or send the document.
 
 ## Reusable knowledge
 
 From the latest approved assignment delivery, choose **Crea procedura / Create workflow** to prepare an editable method. Review its brief and steps, then save it as a draft or ready procedure. **Usa per un incarico / Use for a task** prepares a new queued assignment with those steps. No AI call is made by preparing or saving the method. See [daily productivity](PRODUCTIVITY.md) for scope protections and the distinction between text procedures and repository execution.
+
+The workflow editor can enable **materials**, **objective**, **constraints**, and **deliverable** fields with labels, required flags and optional defaults. Fill them in when using the procedure in chat, an assignment or a routine. Values belong to that use; they do not overwrite the reusable template or grant permissions. A missing required value or changed workflow version must be resolved before execution. Learned procedures clear their field defaults so earlier task values are not silently reused. See [workflow fields and placeholders](WORKFLOW_FIELDS.md).
 
 Use **Memoria** for stable information, preferences, decisions and patterns. Proposed notes are excluded from AI context. Review the wording, source, scope and allowed agents before confirming.
 
@@ -86,6 +100,12 @@ Configure an API service using its exact model ID and your API key, then assign 
 
 A connection is configured when credentials and model are present, not necessarily reachable or funded. **Test connection** makes a tiny request that can be billed. Model catalog access, quotas and features depend on the account. The default Codex connection uses the existing machine login.
 
+## Set call budgets
+
+Open **Projects → Budget** to select a project and optionally an assignment or repository run. Defaults are 200 calls over a project's lifetime and 12 over an assignment's lifetime, alongside the installation's 50-call UTC daily limit. The lowest remaining allowance applies. Change the total limit deliberately; zero blocks new calls and raising it retains previous usage.
+
+Failed, cancelled and interrupted attempts count, and revisions share the original assignment allowance. Preview reports the calls planned for the start, but actual dispatch checks the budget again. These are application call limits, not currency amounts or a complete provider bill. Token totals use available provider reports and identify missing data. See [budget periods, attribution and enforcement](BUDGETS.md).
+
 ## Routines
 
 Create a routine, choose an interval and next due time, and explicitly enable it. The running server checks for due work every 30 seconds. Each occurrence becomes a queued task. By default, you review and start it manually. In **Routine**, explicit autonomy opt-in can start new eligible occurrences while the routine remains enabled, within the daily call and automatic-run limits. Existing queued work from before the opt-in stays manual. Automatic execution still ends at human delivery review; it does not approve or publish results.
@@ -100,6 +120,8 @@ The server must be running; your laptop being asleep or offline can delay queue 
 | Codex unavailable | Verify `codex login status` and `FUORI_STUDIO_CODEX_BIN` |
 | Repository sandbox reports `TIOCSTI` | The inspected macOS 13.6.3 runtime fails its sandbox preflight. Use a compatible host/runtime; keep sandbox enforcement enabled. See [compatibility details](REPOSITORY_WORK.md#host-compatibility-diagnostic). |
 | Daily call limit reached | Wait for the displayed UTC reset or deliberately update the limit; provider billing and quotas remain separate. |
+| Project or assignment limit reached | Review lifetime usage in **Budget** and deliberately adjust the total; waiting for tomorrow does not reset these limits. |
+| Preview expired or context changed | Open or refresh the execution preview, review the updated choices, then confirm again. |
 | Context changed on resume | Restart the task; create a new task if the procedure changed |
 | Task paused after restart | Inspect completed steps, then resume explicitly |
 | Model request rejected | Check exact model ID, API compatibility, balance and key permissions |

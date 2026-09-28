@@ -1,3 +1,6 @@
+import { createExecutionPreview } from './lib/execution-preview.ts';
+import { createStudioSearch } from './lib/studio-search.ts';
+import { prepareWorkflowTask } from './lib/workflow-inputs.mjs';
 import { createWorkflowLearning } from './lib/workflow-learning.ts';
 import { createTeamStore } from './lib/team.ts';
 import { applyAgentNames } from './dist/data.js';
@@ -7,7 +10,7 @@ import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve, sep, extname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getState, newConversation, selectScope, providerStatus, chatTurn, shutdownChat, rememberMessage } from './lib/chat.mjs';
+import { getState, newConversation, selectScope, providerStatus, chatTurn, shutdownChat, rememberMessage, previewChat, conversations } from './lib/chat.mjs';
 import { workspaceStore } from './lib/workspace.mjs';
 import { operationsStore } from './lib/operations.mjs';
 import { providerStore, configureCodexExecution, configureExecutionGovernor } from './lib/providers.mjs';
@@ -70,6 +73,21 @@ const sources = createSourceStore({
   github: input => github.readFile(input),
 });
 configureSourceContext(sources);
+const studioSearch=createStudioSearch({workspace:workspaceStore,conversations,sources,operations:operationsStore,repositories:repositoryWork});
+const executionPreviews=createExecutionPreview({
+  prepare:{plan:input=>plans.preview(input),task:input=>taskExecutor.preview(input.id,input.expectedVersion,input.selection),repository:({id,expectedVersion,selection})=>repositoryWork.preview({id,expectedVersion,selection}),chat:input=>previewChat(input)},
+  budget:plan=>governance.preflight({scopeId:plan.scopeId,...(plan.projectId?{projectId:plan.projectId}:{}),...(plan.kind==='task'?{taskId:plan.id}:plan.kind==='repository'?{runId:plan.id,budgetRunId:plan.budgetTarget.budgetRunId}:{}),requiredCalls:plan.kind==='chat'?Math.min(4,plan.steps.length):plan.steps.length}),
+  destinations:async plan=>{
+    const deviceState=await devices.snapshot();
+    for(const step of plan.steps){
+      if(step.connection?.type!=='codex'){step.destination={name:step.connection?.name||'',type:'api'};continue;}
+      const target=plan.kind==='repository'&&step.agentId==='forge'?plan.configuration.executionTarget:deviceState.executionTarget;
+      const worker=deviceState.devices.find(item=>item.id===target);
+      step.destination={id:target||'local',name:target&&target!=='local'?(plan.configuration?.workerName||worker?.name||target):'Codex · questo computer',type:target&&target!=='local'?'paired':'local'};
+    }
+    return plan;
+  },
+});
 configureCodexExecution({ authorize: scopeId => devices.authorize(scopeId), run: async (prompt, options) => { const result = await devices.run(prompt, options); return result === null ? runCodex(prompt, options) : result; } });
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -112,6 +130,7 @@ async function operationsMutation(action, payload = {}) {
     if (payload.scopeId) await requireScope(payload.scopeId);
   }
   if (['createTask', 'createRoutine', 'updateRoutine'].includes(action)) {
+    if(Object.hasOwn(payload,'workflowInputs'))throw fail('I valori compilati devono essere preparati dal server.');
     const state = await operationsStore.getSnapshot();
     const routine = action === 'updateRoutine' ? state.routines.find(item => item.id === payload.id) : null;
     const project = state.projects.find(item => item.id === (payload.projectId || routine?.projectId));
@@ -124,9 +143,13 @@ async function operationsMutation(action, payload = {}) {
       payload = { ...fields, steps: productBriefSteps() };
     } else if (workflowId) {
       const selected = await workspaceStore.getContext({ scopeId: project.scopeId, query: '', agentId: payload.agentId || routine?.agentId || 'nova', workflowId });
-      if (action === 'createTask') payload = { ...payload, steps: selected.workflow.steps.map(step => ({ title: step.title, agentId: step.agentId, instruction: step.output })) };
+      const workflow=(await workspaceStore.getSnapshot()).workflows.find(item=>item.id===workflowId);
+      const prepared=prepareWorkflowTask(workflow,{brief:payload.brief??routine?.workflowInputs?.originalBrief??routine?.brief??payload.title??routine?.title??'',inputValues:payload.inputValues??routine?.workflowInputs?.values??{},expectedWorkflowVersion:payload.expectedWorkflowVersion??routine?.workflowInputs?.workflowVersion});
+      const {inputValues,expectedWorkflowVersion,...fields}=payload;
+      payload={...fields,brief:prepared.brief,...(prepared.workflowInputs?{workflowInputs:prepared.workflowInputs}:{}),...(action==='createTask'?{steps:prepared.steps}:{})};
     } else if (action === 'createTask' && payload.steps) throw fail('Scegli una procedura pronta per definire più passaggi.');
   }
+  if(Object.hasOwn(payload,'inputValues')||Object.hasOwn(payload,'expectedWorkflowVersion'))throw fail('Scegli una procedura per compilare i suoi campi.');
   return operationsStore.mutate(action, payload);
 }
 async function effectiveProviderStatus() {
@@ -194,6 +217,9 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       const session = await identity.getSession(req);
       if (!session) throw fail('Accedi per continuare.', 401);
+      if(req.method==='GET'&&pathname==='/api/search'){json(res,200,await studioSearch.search({scopeId:url.searchParams.get('scopeId'),query:url.searchParams.get('q')||'',...(url.searchParams.has('kinds')?{kinds:url.searchParams.get('kinds').split(',').filter(Boolean)}:{}),offset:Number(url.searchParams.get('offset')||0),limit:Number(url.searchParams.get('limit')||30)}));return;}
+      if(req.method==='GET'&&pathname==='/api/search/original'){json(res,200,await studioSearch.original(Object.fromEntries(['scopeId','kind','id','conversationId','sourceScopeId'].filter(key=>url.searchParams.has(key)).map(key=>[key,url.searchParams.get(key)]))));return;}
+      if(req.method==='GET'&&pathname==='/api/budgets'){json(res,200,await governance.budgets());return;}
       if (req.method === 'GET' && pathname === '/api/team') { json(res, 200, await team.snapshot()); return; }
       if (req.method === 'GET' && pathname === '/api/setup') { json(res, 200, await setupSnapshot(req)); return; }
       if (req.method === 'GET' && pathname === '/api/github') { json(res, 200, await github.snapshot()); return; }
@@ -237,6 +263,7 @@ const server = createServer(async (req, res) => {
         if (payload.workflowId != null && typeof payload.workflowId !== 'string') throw fail('Procedura non valida.');
         if (payload.workflowId) await workspaceStore.getContext({ scopeId: payload.scopeId, query: payload.message, agentId: 'nova', workflowId: payload.workflowId });
         await providerStore.assertAllowed({ agentId: 'nova', scopeId: payload.scopeId });
+        const previewPlan=await executionPreviews.consume(payload.previewId,{kind:'chat',message:payload.message,scopeId:payload.scopeId,workflowId:payload.workflowId||null});
         // Reserve the chat before any other mutation can change its authorization snapshot.
         res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive' }); res.flushHeaders();
         const controller = new AbortController(); let complete = false;
@@ -244,7 +271,7 @@ const server = createServer(async (req, res) => {
         if (res.destroyed) controller.abort();
         const emit = (type, data) => { if (!res.destroyed) res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`); };
         const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': waiting\n\n'); }, 15000);
-        try { await chatTurn(payload.message, emit, controller.signal, { scopeId: payload.scopeId, workflowId: payload.workflowId || null }); }
+        try { await chatTurn(payload.message, emit, controller.signal, { scopeId: payload.scopeId, workflowId: payload.workflowId || null, previewPlan }); }
         catch (error) { emit('error', { message: error.message }); }
         finally { complete = true; clearInterval(heartbeat); res.end(); }
         } finally { changing = false; }
@@ -252,6 +279,17 @@ const server = createServer(async (req, res) => {
       }
       changing = true;
       try {
+        if(pathname==='/api/execution/preview'){await requireIdle();json(res,200,await executionPreviews.preview(payload));return;}
+        if(pathname==='/api/budgets'){
+          await requireIdle();
+          if(payload.action!=='configureBudget'||!payload.payload||Object.keys(payload.payload).some(key=>!['projectId','taskId','runId','callLimit','expectedVersion'].includes(key)))throw fail('Impostazione del budget non valida.');
+          const input=payload.payload,state=await operationsStore.getSnapshot(),project=state.projects.find(item=>item.id===input.projectId);
+          if(!project||input.taskId&&input.runId)throw fail('Progetto o incarico non valido.');
+          let target={scopeId:project.scopeId,projectId:project.id};
+          if(input.taskId){const task=state.tasks.find(item=>item.id===input.taskId&&item.projectId===project.id);if(!task)throw fail('Incarico non trovato.',404);target={...target,taskId:task.id};}
+          if(input.runId){target=await repositoryWork.budgetTarget({id:input.runId});if(target.projectId!==project.id)throw fail('Il lavoro appartiene a un altro progetto.');}
+          json(res,200,await governance.configureBudget({...target,callLimit:input.callLimit,expectedVersion:input.expectedVersion}));return;
+        }
         if (pathname === '/api/evaluations') {
           await requireIdle();
           if (!['saveCase', 'removeCase', 'runCase', 'feedback'].includes(payload.action) || !payload.payload || typeof payload.payload !== 'object' || Array.isArray(payload.payload)) throw fail('Azione valutazione non disponibile.');
@@ -303,14 +341,15 @@ const server = createServer(async (req, res) => {
           const controller = new AbortController(); let complete = false;
           res.on('close', () => { if (!complete) controller.abort(); });
           if (res.destroyed) controller.abort();
-          try { const result = await plans[payload.action](payload.payload, controller.signal); complete = true; json(res, 200, result); }
+          try { const plan=payload.action==='draft'?await executionPreviews.consume(payload.payload?.previewId,{kind:'plan',projectId:payload.payload?.projectId,brief:payload.payload?.brief}):null;const result = await plans[payload.action](payload.payload, controller.signal,plan); complete = true; json(res, 200, result); }
           finally { complete = true; }
           return;
         }
         if (pathname === '/api/repositories') {
           if (Object.keys(payload).some(key => !['action', 'payload'].includes(key)) || !['register', 'refresh', 'create', 'start', 'pause', 'approve', 'requestChanges', 'proposeMemory'].includes(payload.action)) throw fail('Azione repository non disponibile.');
           if (payload.action !== 'pause') await requireIdle();
-          const result = await repositoryWork[payload.action](payload.payload);
+          const fields={...payload.payload};if(Object.hasOwn(fields,'previewPlan')||Object.hasOwn(fields,'contextSelection')||Object.hasOwn(fields,'selection'))throw fail('Rivedi il contesto attraverso l’anteprima.');if(payload.action==='start'){fields.previewPlan=await executionPreviews.consume(fields.previewId,{kind:'repository',id:fields.id});delete fields.previewId;}
+          const result = await repositoryWork[payload.action](fields);
           json(res, 200, payload.action === 'proposeMemory' ? { workspace: result, ...await repositoryWork.snapshot() } : result); return;
         }
         if (pathname === '/api/memory/export') { await requireIdle(); json(res,200,await portability.export(payload)); return; }
@@ -349,7 +388,7 @@ const server = createServer(async (req, res) => {
           } finally { complete = true; }
           return;
         }
-        if (pathname === '/api/tasks/run') { await requireIdle(); json(res, 200, await taskExecutor.start(payload.id, payload.expectedVersion)); return; }
+        if (pathname === '/api/tasks/run') { await requireIdle(); json(res, 200, await taskExecutor.start(payload.id, payload.expectedVersion,await executionPreviews.consume(payload.previewId,{kind:'task',id:payload.id}))); return; }
         if (pathname === '/api/tasks/pause') { json(res, 200, await taskExecutor.pause(payload.id, payload.expectedVersion)); return; }
         if (pathname === '/api/tasks/memory') { await requireIdle(); json(res, 200, await taskExecutor.proposeMemory(payload)); return; }
         json(res, 404, { error: 'Comando non trovato.' }); return;

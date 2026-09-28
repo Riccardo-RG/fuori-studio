@@ -45,8 +45,9 @@ setTimeout(()=>console.log(JSON.stringify({type:'item.completed',item:{type:'age
   await mutate('saveMemory', note('business', 'UNCONFIRMED', { status: 'proposed' }));
   assert.equal((await request('/api/studio')).scopeId, 'business');
   await request('/api/workspace', { action: 'saveMemory', payload: note('business', 'BLOCKED_ORIGIN') }, 403, { Origin: 'https://example.com' });
-  async function chat(scopeId, workflowId = null) {
-    const response = await fetch(url + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Fuori-Studio': 'local' }, body: JSON.stringify({ message: 'Aiutami con il prossimo passo.', scopeId, workflowId }) });
+  async function chat(scopeId, workflowId = null, agentIds = ['nova', 'forge']) {
+    const receipt = await request('/api/execution/preview', { kind: 'chat', message: 'Aiutami con il prossimo passo.', scopeId, workflowId, agentIds });
+    const response = await fetch(url + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Fuori-Studio': 'local' }, body: JSON.stringify({ message: 'Aiutami con il prossimo passo.', scopeId, workflowId, previewId: receipt.previewId }) });
     assert.equal(response.status, 200); return response;
   }
   const first = await chat('business');
@@ -56,7 +57,9 @@ setTimeout(()=>console.log(JSON.stringify({type:'item.completed',item:{type:'age
   assert.equal(captured.length, 2);
   assert.ok(captured.every(p => p.includes('BUSINESS_FACT') && !p.includes('PERSONAL_SECRET') && !p.includes('UNCONFIRMED')));
   const snapshot = await mutate('saveMemory', note('business', 'LEADER_ONLY', { agentIds: ['nova'] }));
-  assert.match(await (await chat('business')).text(), /note riservate/);
+  await request('/api/execution/preview', { kind: 'chat', message: 'Aiutami con il prossimo passo.', scopeId: 'business', agentIds: ['nova', 'forge'] }, 409);
+  assert.equal((await readFile(prompts, 'utf8')).trim().split('\n').length, 2, 'restricted handoff fails before any paid call');
+  assert.match(await (await chat('business', null, ['nova'])).text(), /non sono autorizzati/);
   captured = (await readFile(prompts, 'utf8')).trim().split('\n').map(line => JSON.parse(line).prompt);
   assert.equal(captured.length, 3, 'leader-only data blocks delegated prompt');
   const restricted = snapshot.memories.find(m => m.title === 'LEADER_ONLY');

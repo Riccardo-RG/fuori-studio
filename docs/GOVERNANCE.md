@@ -2,6 +2,8 @@
 
 Fuori Studio applies application-level limits before an AI call starts. These limits are independent of the account's provider quota, subscription, API billing or Codex usage window. They do not purchase credits, reset a provider limit or guarantee a monetary spending ceiling.
 
+Project and assignment lifetime ceilings apply alongside the installation's daily limit. Their defaults, revision attribution and Budget panel are described in [AI call budgets](BUDGETS.md). Owner-initiated chat, task, repository and plan starts first use [the execution preview](EXECUTION_PREVIEW.md); previewing makes no AI call or reservation.
+
 ## Durable call reservations
 
 `createGovernance()` stores settings, call reservations, autonomous-routine claims and user feedback in the encrypted archive under `governance`. The service uses the archive's transactional `update` operation: checking the daily allowance and reserving an attempt are one atomic write. Concurrent requests cannot all consume the same remaining allowance.

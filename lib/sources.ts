@@ -270,6 +270,14 @@ export function createSourceStore({ storage, workspace, mode = 'local', allowedR
   ];
   return {
     allMetadata: () => serial(async () => (await load()).records.map(metadata)),
+    // Local search takes one scoped archive snapshot, avoiding one full archive
+    // decryption per document. It never refreshes or fetches a source.
+    searchSnapshot: async ({ scopeIds }: { scopeIds: string[] }) => {
+      if (!Array.isArray(scopeIds) || !scopeIds.length || scopeIds.length > 200) throw fail('Ambiti di ricerca non validi.');
+      const selected = new Set(scopeIds.map(identifier)), known = new Set((await workspace.getSnapshot()).scopes.map(item => item.id));
+      if ([...selected].some(id => !known.has(id))) throw fail('Ambito non trovato.', 'NOT_FOUND', 404);
+      return serial(async () => (await load()).records.filter(item => selected.has(item.scopeId)).map(detail));
+    },
     snapshot: async ({ scopeId }: { scopeId: string }) => { await scope(scopeId); return serial(async () => ({ sources: (await load()).records.filter(item => item.scopeId === scopeId).map(metadata), connectors: clone(connectors), limits: { maxDocumentBytes, maxTextChars, maxRecords, maxFolderFiles: 60 } })); },
     detail: async ({ id, scopeId }: { id: string; scopeId: string }) => { await scope(scopeId); return serial(async () => detail(find(await load(), id, scopeId))); },
     importText: async ({ scopeId, title, text, filename }: { scopeId: string; title: string; text: string; filename?: string }) => { await scope(scopeId); const content = bounded(text, maxTextChars, 'Testo'); return store(make({ scopeId, kind: 'text', title, filename: filename ? safeFilename(filename) : null, segments: segmentsFromText(content), bytes: Buffer.byteLength(content), origin: { type: 'manual' } })); },
