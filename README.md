@@ -138,3 +138,9 @@ Drag to rotate, wheel or **+ / −** to zoom, Shift/right-drag to pan. On touch 
 Open a computer or use the scene's bottom dock to reach projects, memory, procedures and context. **Tutto schermo** expands the studio with usable work panels. **Ora locale** follows the device clock (day 07:00–19:00); **Sempre giorno** and **Sempre notte** override it. Every landscape has a lit campfire at night. Small **?** controls explain features on hover, keyboard focus or tap. There is no audio.
 
 Three.js is distributed under its MIT license, copied into `dist/vendor/THREE-LICENSE.txt` during installation. The world is built from geometry, not generated images.
+
+## Interface languages
+
+Choose **Italiano** or **English** in the top bar or sign-in screen. The preference is saved per browser and changes the interface without reloading; project names, memory, documents and existing conversations stay in their original language. See [Localization](docs/LOCALIZATION.md) for the language, data and diagnostic boundaries.
+
+You can also rename a teammate from their card. Names are saved in the encrypted studio archive and remain the same in both languages; roles, provider assignments and memory permissions keep their stable agent IDs.

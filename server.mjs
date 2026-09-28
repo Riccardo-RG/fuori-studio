@@ -1,3 +1,5 @@
+import { createTeamStore } from './lib/team.ts';
+import { applyAgentNames } from './dist/data.js';
 import { createServer } from 'node:http';
 import { readFile, stat, realpath, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -57,6 +59,7 @@ const repositoryWork = createRepositoryWork({
   },
 });
 const github = createGitHub({ storage: defaultArchive, workspace: workspaceStore, approvedRun: input => repositoryWork.approvedPublication(input) });
+const team = createTeamStore({storage:defaultArchive});
 const evaluations = createMemoryEvaluations({ storage: defaultArchive, workspace: workspaceStore });
 const sources = createSourceStore({
   storage: defaultArchive, workspace: workspaceStore, mode,
@@ -77,7 +80,7 @@ async function body(req, limit = 120000) {
 }
 let changing = false, closing = false, routineError = null;
 const releaseLock = await acquireInstanceLock(resolve(process.env.FUORI_STUDIO_DATA_DIR || resolve(appRoot, '.local')));
-try { await defaultArchive.init(); await identity.init(); await devices.recover(); await repositoryDevices.recover(); await getState(); await operationsStore.recoverInterrupted(); await providerStore.getSnapshot(); await repositoryWork.recoverInterrupted(); await governance.recoverInterrupted(); await github.recover(); await sources.allMetadata(); }
+try { await defaultArchive.init(); applyAgentNames((await team.snapshot()).names); await identity.init(); await devices.recover(); await repositoryDevices.recover(); await getState(); await operationsStore.recoverInterrupted(); await providerStore.getSnapshot(); await repositoryWork.recoverInterrupted(); await governance.recoverInterrupted(); await github.recover(); await sources.allMetadata(); }
 catch (error) { await releaseLock(); throw error; }
 const isBusy = async () => taskExecutor.busy || repositoryWork.busy || (await getState()).busy;
 const requireIdle = async () => { if (await isBusy()) throw fail('Attendi la risposta del team o metti in pausa l’incarico prima di modificare il contesto o i servizi.', 409); };
@@ -189,6 +192,7 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       const session = await identity.getSession(req);
       if (!session) throw fail('Accedi per continuare.', 401);
+      if (req.method === 'GET' && pathname === '/api/team') { json(res, 200, await team.snapshot()); return; }
       if (req.method === 'GET' && pathname === '/api/setup') { json(res, 200, await setupSnapshot(req)); return; }
       if (req.method === 'GET' && pathname === '/api/github') { json(res, 200, await github.snapshot()); return; }
       if (req.method === 'GET' && pathname === '/api/evaluations') { json(res, 200, await evaluations.snapshot({ scopeId: url.searchParams.get('scopeId') })); return; }
@@ -257,6 +261,7 @@ const server = createServer(async (req, res) => {
           const result = await github[payload.action](payload.payload);
           json(res, 200, { result, snapshot: await github.snapshot() }); return;
         }
+        if (pathname === '/api/team') { await requireIdle(); const value=await team.rename(payload); applyAgentNames(value.names); json(res,200,value); return; }
         if (pathname === '/api/maintenance') {
           await requireIdle();
           if (payload.action === 'backup') await maintenance.createBackup();

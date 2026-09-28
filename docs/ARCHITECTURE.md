@@ -79,3 +79,9 @@ The cloud controller owns its workspace and may queue a Codex request for a spec
 Knowledge synchronization performs a record-level three-way merge against saved hashes. Conflicting edits and deletion-versus-edit cases remain reviewable. Tombstones survive reconnection and re-pairing; local sharing grants and revision history never travel. Explicit copy/restore creates a new record with review. The remote browser can access the same full hosted workspace; this is different from synchronizing two independent installations.
 
 Portable packages contain selected confirmed memories and ready procedures. Readable JSON/Markdown is useful to other tools. Encrypted packages use a separate user passphrase, not the installation master key. Import previews are private and expire; atomic import receipts make retries idempotent. Imported notes and procedures require local review before retrieval or execution.
+
+## Localization boundary
+
+The browser uses explicit Italian/English catalogs and native `Intl` formatting. UI language is a per-browser preference, independent of identity and stored knowledge. Literal application markup is translated before opaque user data is substituted; language updates do not reload the page or start AI work. See [Localization](LOCALIZATION.md) for contributor rules and preserved data boundaries.
+
+Team display names are stored in a versioned `team-profiles` encrypted record. Owner-only updates use the existing context mutation lock, require idle execution and reject stale revisions. Prompt role selection and authorization continue to use fixed agent IDs; user-supplied display names are explicitly data. No name changes are replicated through selective memory synchronization.

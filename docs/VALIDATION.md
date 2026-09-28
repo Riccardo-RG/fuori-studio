@@ -41,3 +41,17 @@ The web container, public DNS/TLS, real OIDC account, live private GitHub token 
 Real Codex repository editing remains blocked on the previously inspected macOS 13.6.3 host by its `TIOCSTI` sandbox preflight failure. The new implementation does not disable or bypass that sandbox and no further runtime probes were performed. A compatible execution host/runtime is required. See [the diagnostic](REPOSITORY_WORK.md#host-compatibility-diagnostic).
 
 Memory tests verify deterministic retrieval behavior. No production memory library has been declared accurate or useful without representative owner-labeled cases. These measurements are available through [memory evaluation](MEMORY_EVALUATION.md); passing presence checks does not prove answer accuracy or complete context.
+
+## 0.6.0 — Italian/English and editable team names (2026-09-28)
+
+- Full suite: **278 tests passed**, zero failures or skips. Includes four localization boundary/catalog tests, five team-store tests and one hosted team HTTP test.
+- Syntax check: 98 JavaScript modules; strict TypeScript check passed. `git diff --check` passed.
+- Browser checks used disposable local archives, a fake Codex executable and blocked external requests. No live AI calls or production archive mutations were used for QA.
+- Verified initial browser-language choice, explicit preference persistence, switching without reload, cross-tab changes, blocked-storage fallback and the language selector before login. Desktop 1440px and mobile 390px/day/night layouts had no horizontal overflow or JavaScript errors.
+- Verified project/memory/workflow/evaluation drafts, conditional export and memory-policy controls, remote repository/check rows, GitHub dependent selections and selected upload files survive a language change. User-owned strings matching translation keys remain verbatim.
+- Team checks covered owner/session/CSRF enforcement, stale revisions, unique names, durable encrypted storage, failed-write recovery and stable IDs. Browser checks covered harmless rendering of HTML-like names, reload persistence, live nameplates/cards, duplicate/conflict errors and unchanged provider assignments and memory permissions.
+- The real local server was restarted after confirming no chat/task/repository execution was active. `/healthz` and the authenticated/local team endpoint returned 200 with all five profiles.
+
+Artifacts from this run are under `/private/tmp/fuori-studio-qa/i18n/` and `/private/tmp/fuori-studio-qa/team-localization/` on the development machine. Additional targeted scripts are `i18n-workspace.cjs`, `experience-i18n-qa.cjs`, `team-ui-qa.cjs` in `/private/tmp/fuori-studio-qa/`, and `/private/tmp/workflows-i18n-qa.cjs`. These are local QA artifacts, not installed runtime dependencies or CI browser coverage.
+
+Raw external/provider and some server diagnostics retain their original language; stored knowledge and historical responses are deliberately not rewritten. AI language-following is a prompt instruction, not a verified live-model guarantee. No new dependency audit or deployment was performed in this release.

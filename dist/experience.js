@@ -1,3 +1,4 @@
+import { t, ui, locale, bindText, onLanguageChange } from './i18n.js';
 import { agents } from './data.js';
 import { daylightMode, isNight, scopeIdentity } from './experience-state.js';
 import { icon } from './studio-icons.js';
@@ -13,7 +14,7 @@ const help = {
   workflows: 'Una procedura descrive un metodo riutilizzabile: passaggi, agenti e risultato atteso. Puoi applicarla in chat o usarla per organizzare un incarico.',
   projects: 'Raccogli obiettivi, incarichi e consegne dei tuoi prodotti. Scegli un ambito dedicato per conservare il contesto del progetto. Avvii il lavoro e approvi tu il risultato.',
   meeting: 'Quando più agenti partecipano allo stesso incarico o alla stessa risposta, si ritrovano qui. Il pannello mostra chi lavora e il passaggio attuale. Aprirlo non avvia chiamate AI.',
-  chat: 'Riccardo coordina e coinvolge gli specialisti necessari. La risposta usa il contesto autorizzato dell’ambito selezionato e il servizio AI assegnato a ciascun agente.',
+  chat: 'Il coordinatore coinvolge gli specialisti necessari. La risposta usa il contesto autorizzato dell’ambito selezionato e il servizio AI assegnato a ciascun agente.',
   review: 'Una consegna da approvare non è un errore. Puoi accettarla o chiedere una revisione; le versioni precedenti restano conservate.',
   providers: 'Assegna un servizio AI a ogni agente e scegli quali servizi possono ricevere il contesto di questo ambito. Le credenziali restano nella configurazione locale del server.',
   routines: 'Le routine preparano incarichi a intervalli regolari. Il lavoro AI parte soltanto con il tuo avvio esplicito.',
@@ -29,25 +30,26 @@ export function createStudioExperience({world, knowledge, operations}) {
 
   const controls = document.createElement('div');
   controls.className = 'studio-controls';
-  controls.innerHTML = `<div class="studio-context-strip"><span class="scope-identity" id="studio-scope"></span><span class="studio-clock"><time id="studio-clock"></time><span id="studio-day-label"></span></span></div><div class="studio-control-actions"><label class="studio-theme-control" for="daylight-mode"><span id="daylight-icon">${icon('sun')}</span><span class="visually-hidden">Illuminazione dello studio</span><select id="daylight-mode"><option value="auto">Ora locale</option><option value="day">Sempre giorno</option><option value="night">Sempre notte</option></select></label><button class="studio-controls-button" type="button" id="toggle-chat" aria-pressed="true" aria-label="Mostra o nascondi la conversazione">${icon('chat')}<span>Chat</span></button><button class="studio-controls-button" type="button" id="toggle-immersive" aria-pressed="false">${icon('expand')}<span>Tutto schermo</span></button></div>`;
+  controls.innerHTML = ui`<div class="studio-context-strip"><span class="scope-identity" id="studio-scope"></span><span class="studio-clock"><time id="studio-clock"></time><span id="studio-day-label"></span></span></div><div class="studio-control-actions"><label class="studio-theme-control" for="daylight-mode"><span id="daylight-icon">${icon('sun')}</span><span class="visually-hidden">Illuminazione dello studio</span><select id="daylight-mode"><option value="auto">Ora locale</option><option value="day">Sempre giorno</option><option value="night">Sempre notte</option></select></label><button class="studio-controls-button" type="button" id="toggle-chat" aria-pressed="true" aria-label="Mostra o nascondi la conversazione">${icon('chat')}<span>Chat</span></button><button class="studio-controls-button" type="button" id="toggle-immersive" aria-pressed="false">${icon('expand')}<span>Tutto schermo</span></button></div>`;
   worldHost.before(controls);
   const activity = document.createElement('div');
   activity.className = 'world-activity';
-  activity.innerHTML = '<span class="activity-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span id="world-load-label">Spazio alle idee</span>';
+  activity.innerHTML = ui('<span class="activity-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span id="world-load-label">Spazio alle idee</span>');
   worldHost.append(activity);
   const nav = document.createElement('nav');
   nav.className = 'world-dock';
-  nav.setAttribute('aria-label','Postazioni dello studio');
-  nav.innerHTML = Object.entries(labels).map(([kind,label]) => `<button type="button" data-studio-open="${kind}" aria-label="Apri ${label}">${icon(kind)}<span>${label}</span></button>`).join('');
+  nav.setAttribute('aria-label',t('Postazioni dello studio'));
+  const renderNav=()=>{nav.innerHTML=Object.entries(labels).map(([kind,label])=>ui`<button type="button" data-studio-open="${kind}" aria-label="Apri ${t(label)}">${icon(kind)}<span>${t(label)}</span></button>`).join('');nav.setAttribute('aria-label',t('Postazioni dello studio'));};
+  renderNav();
   worldHost.append(nav);
   const dock = document.createElement('aside');
-  dock.id = 'studio-dock';dock.hidden = true;dock.setAttribute('aria-label','Pannello di lavoro');
-  dock.innerHTML = '<div class="studio-dock-head"><strong id="studio-dock-title"></strong><button type="button" class="icon-button" id="studio-dock-close" aria-label="Chiudi pannello di lavoro">✕</button></div><div class="studio-dock-body"></div>';
+  dock.id = 'studio-dock';dock.hidden = true;dock.setAttribute('aria-label',t('Pannello di lavoro'));
+  dock.innerHTML = ui('<div class="studio-dock-head"><strong id="studio-dock-title"></strong><button type="button" class="icon-button" id="studio-dock-close" aria-label="Chiudi pannello di lavoro">✕</button></div><div class="studio-dock-body"></div>');
   workspace.append(dock);
   const meeting = document.createElement('section');
   meeting.id = 'meeting-panel';meeting.className = 'meeting-panel';meeting.hidden = true;
   meeting.setAttribute('aria-labelledby','meeting-title');
-  meeting.innerHTML = `<div class="section-title"><div><div class="eyebrow">IL TAVOLO DELLO STUDIO</div><h2 id="meeting-title">Le idee si incontrano.</h2></div>${icon('meeting')}</div><div id="meeting-content"></div>`;
+  meeting.innerHTML = ui`<div class="section-title"><div><div class="eyebrow">IL TAVOLO DELLO STUDIO</div><h2 id="meeting-title">Le idee si incontrano.</h2></div>${icon('meeting')}</div><div id="meeting-content"></div>`;
   $('.team-section').before(meeting);
 
   const tooltip = document.createElement('div');
@@ -67,7 +69,7 @@ export function createStudioExperience({world, knowledge, operations}) {
   }
   function showHelp(button, pinned = false) {
     closeHelp();helpOwner = button;helpPinned = pinned;
-    tooltip.textContent = help[button.dataset.help];tooltip.hidden = false;
+    bindText(tooltip,help[button.dataset.help]);tooltip.hidden = false;
     button.setAttribute('aria-describedby',tooltip.id);button.setAttribute('aria-expanded','true');positionHelp();
   }
   function addHelp(selector, key, title) {
@@ -75,7 +77,7 @@ export function createStudioExperience({world, knowledge, operations}) {
     if (!target) return;
     const button = document.createElement('button');
     button.type = 'button';button.className = 'help-button';button.dataset.help = key;button.textContent = '?';
-    button.setAttribute('aria-label',`Aiuto: ${title}`);button.setAttribute('aria-expanded','false');
+    button.dataset.helpTitle=title;button.setAttribute('aria-label',t('Aiuto: {title}',{title:t(title)}));button.setAttribute('aria-expanded','false');
     // A sibling button keeps the heading/label semantics while staying visually compact.
     if (target.matches('h2, select, .knowledge-tabs')) {
       const wrapper = document.createElement('div');wrapper.className = target.matches('h2') ? 'help-heading' : 'help-field';
@@ -94,10 +96,10 @@ export function createStudioExperience({world, knowledge, operations}) {
   addHelp('#meeting-title','meeting','riunioni');
   // Tab help lives outside tablists so arrow-key navigation retains tab semantics.
   const legend = document.createElement('div');legend.className = 'studio-legend';
-  legend.innerHTML = '<span>Conosci lo studio</span>';
+  legend.innerHTML = ui('<span>Conosci lo studio</span>');
   for (const key of ['review','providers','routines','quiet']) {
-    const item = document.createElement('span');item.textContent = {review:'Consegne',providers:'Servizi AI',routines:'Routine',quiet:'Animazioni'}[key];
-    const button = document.createElement('button');button.type = 'button';button.className = 'help-button';button.dataset.help = key;button.textContent = '?';button.setAttribute('aria-label',`Aiuto: ${item.textContent}`);button.setAttribute('aria-expanded','false');item.append(button);legend.append(item);
+    const item=document.createElement('span'),label=document.createElement('span'),title={review:'Consegne',providers:'Servizi AI',routines:'Routine',quiet:'Animazioni'}[key];bindText(label,title);item.append(label);
+    const button=document.createElement('button');button.type='button';button.className='help-button';button.dataset.help=key;button.dataset.helpTitle=title;button.textContent='?';button.setAttribute('aria-label',t('Aiuto: {title}',{title:t(title)}));button.setAttribute('aria-expanded','false');item.append(button);legend.append(item);
   }
   $('#operations-panel').append(legend);
   document.addEventListener('pointerover',event => {const button = event.target.closest('.help-button');if (button && !helpPinned && button !== helpOwner && event.pointerType !== 'touch') showHelp(button);});
@@ -119,9 +121,9 @@ export function createStudioExperience({world, knowledge, operations}) {
     const date = new Date(), night = isNight(mode,date);
     body.dataset.theme = night ? 'night' : 'day';document.documentElement.dataset.theme = body.dataset.theme;
     $('#daylight-mode').value = mode;
-    $('#studio-clock').textContent = date.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    $('#studio-clock').textContent = date.toLocaleTimeString(locale(),{hour:'2-digit',minute:'2-digit'});
     $('#studio-clock').dateTime = date.toISOString();
-    $('#studio-day-label').textContent = `${night ? 'Notte' : 'Giorno'}${mode === 'auto' ? ' · ora locale' : ' · manuale'}`;
+    $('#studio-day-label').textContent = `${night ? t('Notte') : t('Giorno')}${mode === 'auto' ? t(' · ora locale') : t(' · manuale')}`;
     $('#daylight-icon').innerHTML = icon(night ? 'moon' : 'sun');
     document.querySelector('meta[name="theme-color"]').content = night ? '#111315' : '#f2f0e9';
     world?.setNight(night);
@@ -137,7 +139,7 @@ export function createStudioExperience({world, knowledge, operations}) {
   }
   function syncButtons() {
     $('#toggle-immersive').setAttribute('aria-pressed',String(immersive));
-    $('#toggle-immersive span').textContent = immersive ? 'Esci' : 'Tutto schermo';
+    bindText($('#toggle-immersive span'),immersive?'Esci':'Tutto schermo');
     $('#toggle-chat').setAttribute('aria-pressed',String(immersive ? currentPanel === 'chat' : !body.classList.contains('chat-collapsed')));
     nav.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed',String(currentPanel === button.dataset.studioOpen)));
   }
@@ -157,7 +159,7 @@ export function createStudioExperience({world, knowledge, operations}) {
     if (kind === 'chat') body.classList.remove('chat-collapsed');
     if (immersive && kind !== 'chat') {
       const placeholder = document.createComment(`studio:${kind}`);panel.before(placeholder);moved.set(panel,placeholder);
-      dock.querySelector('.studio-dock-body').append(panel);$('#studio-dock-title').textContent = labels[kind];dock.hidden = false;dock.querySelector('.studio-dock-body').scrollTop = 0;
+      dock.querySelector('.studio-dock-body').append(panel);bindText($('#studio-dock-title'),labels[kind]);dock.hidden = false;dock.querySelector('.studio-dock-body').scrollTop = 0;
     } else if (!immersive) panel.scrollIntoView({behavior:body.classList.contains('focus-mode') ? 'instant' : 'smooth',block:'start'});
     syncButtons();
     const focus = kind === 'chat' ? $('#chat-input') : kind === 'context' ? $('#knowledge-scope') : panel.querySelector('h2');
@@ -189,7 +191,7 @@ export function createStudioExperience({world, knowledge, operations}) {
   });
 
   function setScope(scope) {
-    currentScope = scope || {id:'business',name:'Imprenditoria'};
+    currentScope = scope || {id:'business',get name(){return t('Imprenditoria');}};
     const identity = scopeIdentity(currentScope), badge = $('#studio-scope');
     badge.replaceChildren();badge.insertAdjacentHTML('beforeend',icon(identity.icon));
     const name = document.createElement('span');name.textContent = identity.name;badge.append(name);
@@ -200,7 +202,7 @@ export function createStudioExperience({world, knowledge, operations}) {
   }
   function setActivity(value) {
     lastActivity = value;world?.setActivity(value);
-    $('#world-load-label').textContent = value.label;
+    bindText($('#world-load-label'),value.label);
     activity.dataset.level = value.problemKey ? 'problem' : value.load >= .7 ? 'busy' : value.load > 0 ? 'working' : 'idle';
     activity.querySelectorAll('i').forEach((bar,index) => bar.classList.toggle('active',index < Math.ceil(value.load*5)));
     const signature = JSON.stringify(value.meeting);
@@ -209,29 +211,32 @@ export function createStudioExperience({world, knowledge, operations}) {
     const content = $('#meeting-content'), restoreMeetingFocus = content.contains(document.activeElement);
     content.replaceChildren();
     if (!value.meeting) {
-      const empty = document.createElement('div');empty.className = 'meeting-empty';empty.innerHTML = `${icon('meeting')}<h3>Un posto per pensare insieme.</h3><p>Il tavolo si anima quando due o più colleghi lavorano allo stesso incarico o alla stessa risposta.</p><button type="button" class="button primary" data-studio-open="projects">Apri i progetti</button>`;content.append(empty);if (restoreMeetingFocus) empty.querySelector('button').focus({preventScroll:true});return;
+      const empty = document.createElement('div');empty.className = 'meeting-empty';empty.innerHTML = ui`${icon('meeting')}<h3>Un posto per pensare insieme.</h3><p>Il tavolo si anima quando due o più colleghi lavorano allo stesso incarico o alla stessa risposta.</p><button type="button" class="button primary" data-studio-open="projects">Apri i progetti</button>`;content.append(empty);if (restoreMeetingFocus) empty.querySelector('button').focus({preventScroll:true});return;
     }
-    const title = document.createElement('h3');title.textContent = value.meeting.title;
-    const stage = document.createElement('p');stage.className = 'meeting-stage';stage.textContent = value.meeting.stage;
+    const title = document.createElement('h3');if(value.meeting.titleSource)bindText(title,value.meeting.titleSource);else title.textContent=value.meeting.title;
+    const stage = document.createElement('p');stage.className = 'meeting-stage';if(value.meeting.stageSource)bindText(stage,value.meeting.stageSource);else stage.textContent=value.meeting.stage;
     const list = document.createElement('div');list.className = 'meeting-participants';
     for (const id of value.meeting.participants) {
       const agent = agents.find(item => item.id === id);if (!agent) continue;
       const row = document.createElement('div');row.className = 'meeting-participant';row.style.setProperty('--agent-color',agent.color);
-      row.innerHTML = '<span class="meeting-avatar" aria-hidden="true"></span><strong></strong><span class="meeting-person-state"></span>';
-      row.children[0].textContent = agent.name[0];row.children[1].textContent = agent.name;row.children[2].textContent = value.activeAgentIds.includes(id) ? 'Al lavoro' : 'Nel team dell’incarico';list.append(row);
+      row.innerHTML = ui('<span class="meeting-avatar" aria-hidden="true"></span><strong></strong><span class="meeting-person-state"></span>');
+      row.children[0].textContent = agent.name[0];row.children[1].textContent = agent.name;bindText(row.children[2],value.activeAgentIds.includes(id)?'Al lavoro':'Nel team dell’incarico');list.append(row);
     }
-    const note = document.createElement('p');note.className = 'muted';note.textContent = 'Il tavolo rappresenta il coordinamento. I passaggi dell’incarico vengono eseguiti in ordine; la chat può coinvolgere più specialisti insieme.';
-    const button = document.createElement('button');button.type = 'button';button.className = 'button primary';button.textContent = value.meeting.taskId ? 'Apri l’incarico' : 'Apri la conversazione';button.addEventListener('click',() => {if (value.meeting.taskId) operations.openTask(value.meeting.taskId);else openPanel('chat');});
+    const note = document.createElement('p');note.className = 'muted';bindText(note,'Il tavolo rappresenta il coordinamento. I passaggi dell’incarico vengono eseguiti in ordine; la chat può coinvolgere più specialisti insieme.');
+    const button = document.createElement('button');button.type = 'button';button.className = 'button primary';bindText(button,value.meeting.taskId?'Apri l’incarico':'Apri la conversazione');button.addEventListener('click',() => {if (value.meeting.taskId) operations.openTask(value.meeting.taskId);else openPanel('chat');});
     content.append(title,stage,list,note,button);if (restoreMeetingFocus) button.focus({preventScroll:true});
   }
   function updateStations(positions) {
     for (const station of positions) {
       let button = markers.get(station.id);
-      if (!button) {button = document.createElement('button');button.type = 'button';button.className = 'station-marker';button.dataset.studioOpen = station.kind;button.innerHTML = `${icon(station.kind)}<span></span>`;worldHost.append(button);markers.set(station.id,button);}
-      if (button.querySelector('span').textContent !== station.label) {button.querySelector('span').textContent = station.label;button.setAttribute('aria-label',`Apri ${station.label}`);}
+      if (!button) {button = document.createElement('button');button.type = 'button';button.className = 'station-marker';button.dataset.studioOpen = station.kind;button.innerHTML = ui`${icon(station.kind)}<span></span>`;worldHost.append(button);markers.set(station.id,button);}
+      const source={memory:'Memorie',projects:'Progetti',workflows:'Procedure',context:'Contesto',meeting:'Riunione',chat:'Conversazione'}[station.kind],label=source?t(source):station.label;
+      if(button.querySelector('span').textContent!==label){if(source)bindText(button.querySelector('span'),source);else button.querySelector('span').textContent=label;button.setAttribute('aria-label',t('Apri {name}',{name:label}));}button.dataset.stationSource=source||'';
       button.hidden = !station.visible;button.style.left = `${station.x}px`;button.style.top = `${station.y}px`;
     }
   }
+  for(const [selector,source] of [['.studio-theme-control .visually-hidden','Illuminazione dello studio'],['#daylight-mode [value=auto]','Ora locale'],['#daylight-mode [value=day]','Sempre giorno'],['#daylight-mode [value=night]','Sempre notte'],['#toggle-chat span','Chat'],['#meeting-title','Le idee si incontrano.'],['#meeting-panel .eyebrow','IL TAVOLO DELLO STUDIO'],['.studio-legend>span:first-child','Conosci lo studio']])bindText($(selector),source);
+  onLanguageChange(()=>{renderNav();syncButtons();syncDaylight();dock.setAttribute('aria-label',t('Pannello di lavoro'));$('#studio-dock-close').setAttribute('aria-label',t('Chiudi pannello di lavoro'));$('#toggle-chat').setAttribute('aria-label',t('Mostra o nascondi la conversazione'));for(const button of document.querySelectorAll('.help-button[data-help-title]'))button.setAttribute('aria-label',t('Aiuto: {title}',{title:t(button.dataset.helpTitle)}));for(const button of markers.values())if(button.dataset.stationSource)button.setAttribute('aria-label',t('Apri {name}',{name:t(button.dataset.stationSource)}));if(helpOwner)positionHelp();if(lastActivity){meetingSignature=null;setActivity(lastActivity);}});
   syncDaylight();setScope();setActivity({load:0,label:'Spazio alle idee',problemKey:null,collaboratingIds:[],activeAgentIds:[],meeting:null});
   window.addEventListener('pagehide',event => {if (!event.persisted) clearInterval(clockTimer);});
   window.addEventListener('pageshow',syncDaylight);

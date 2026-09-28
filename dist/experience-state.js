@@ -35,8 +35,8 @@ export function repositoryActivityTasks(runs = []) {
     id: `repository:${run.id}`,
     events: (run.events || []).map(event => ({ ...event, createdAt: event.createdAt || event.at })),
     steps: [
-      { agentId: 'forge', title: 'Preparazione e verifica del codice', status: run.status === 'running' && run.stage !== 'reviewing' ? 'running' : 'completed' },
-      { agentId: 'nova', title: 'Revisione della modifica', status: run.status === 'running' && run.stage === 'reviewing' ? 'running' : run.status === 'running' ? 'pending' : 'completed' },
+      { agentId: 'forge', title: 'Preparazione e verifica del codice', titleSource: 'Preparazione e verifica del codice', status: run.status === 'running' && run.stage !== 'reviewing' ? 'running' : 'completed' },
+      { agentId: 'nova', title: 'Revisione della modifica', titleSource: 'Revisione della modifica', status: run.status === 'running' && run.stage === 'reviewing' ? 'running' : run.status === 'running' ? 'pending' : 'completed' },
     ],
   }));
 }
@@ -65,7 +65,9 @@ export function deriveActivity({tasks = [], chat = {}, now = Date.now()} = {}) {
     meeting: collaboratingIds.length ? {
       taskId: collaboration?.id || null,
       title: collaboration?.title || 'Una risposta, più punti di vista',
+      titleSource: collaboration?.title ? null : 'Una risposta, più punti di vista',
       stage: collaboration?.steps.find(step => step.status === 'running')?.title || 'Collaborazione in chat',
+      stageSource: collaboration?.steps.find(step => step.status === 'running')?.title ? (collaboration.steps.find(step => step.status === 'running').titleSource || null) : 'Collaborazione in chat',
       participants: collaboratingIds, activeAgentIds: [...active]
     } : null
   };
