@@ -80,6 +80,11 @@ test('HTTP context previews bind chat permissions, exclusions, original workflow
   assert.equal((await f.calls()).length, 0, 'previews and rejected execution must never invoke the provider');
   await f.request('/api/budgets', { action: 'configureBudget', payload: { projectId: project.id, callLimit: 10, expectedVersion: 1 } });
 
+  const oldSpecialty=await f.preview({...input,agentIds:['nova','forge']});
+  await f.request('/api/team/capabilities',{id:'forge',profileId:'qa',expectedVersion:1});
+  await f.chat(input,oldSpecialty,409);
+  assert.equal((await f.calls()).length,0,'changing a specialty invalidates the receipt before reserving any provider call');
+
   const leaderOnly = await f.preview(input);
   assert.deepEqual(leaderOnly.agentIds, ['nova']); assert.equal(leaderOnly.requiredCalls, 1);
   assert.ok(leaderOnly.steps[0].memories.some(item => item.id === memory.id && item.included));

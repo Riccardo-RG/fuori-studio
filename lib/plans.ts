@@ -1,4 +1,5 @@
 import { agents } from '../dist/data.js';
+import {assertCapabilityCurrent,specialtyInstructions,capabilityRoster,rosterInstructions} from './agent-instructions.mjs';
 import { randomUUID } from 'node:crypto';
 import { operationsStore } from './operations.mjs';
 import { workspaceStore } from './workspace.mjs';
@@ -8,7 +9,7 @@ import { contextEvidence, contextPrompt, applyContextSelection, contextSelection
 
 export type AgentId = 'nova' | 'radar' | 'forge' | 'muse' | 'growth';
 export interface PlanNode { key: string; title: string; brief: string; agentId: AgentId; dependsOn: string[] }
-export interface PlanDraft { id: string; projectId: string; title: string; nodes: PlanNode[]; createdAt: string; expiresAt: string; context: unknown }
+export interface PlanDraft { id: string; projectId: string; title: string; nodes: PlanNode[]; createdAt: string; expiresAt: string; context: unknown; capabilities?:ReturnType<typeof capabilityRoster> }
 interface Project { id: string; scopeId: string; title: string; description: string }
 interface OperationsPort { getSnapshot(): Promise<{ projects: Project[] }>; mutate(action: string, payload: Record<string, unknown>): Promise<unknown> }
 interface WorkspacePort { getSnapshot(): Promise<unknown>; getContext(input: { scopeId: string; query: string; agentId: string }): Promise<unknown> }
@@ -53,7 +54,7 @@ export function createPlanService({ operations = operationsStore as unknown as O
     const evidence = contextEvidence(context);
     const connection=await assertContextProvider(providers, { agentId: 'nova', scopeId: project.scopeId, evidence, snapshot: await workspace.getSnapshot(), connectionId: pinned?.connection?.id });
     if(pinned&&JSON.stringify(connection)!==JSON.stringify(pinned.connection))throw fail('Il servizio AI è cambiato. Rivedi l’anteprima.',409);
-    return { project, availableContext,context, evidence,connection };
+    return { project, availableContext,context, evidence,connection, capability:assertCapabilityCurrent('nova',pinned?.capability), capabilities:capabilityRoster() };
   }
   return {
     async preview(input:Record<string,any>){const brief=text(input.brief,12000),projectId=text(input.projectId,100),selection=contextSelection(input.selection);const checked=await projectContext(projectId,brief,selection);return {kind:'plan',id:projectId,projectId,scopeId:checked.project.scopeId,title:brief.slice(0,100),brief,selection,project:checked.project,steps:[{agentId:'nova',...checked}]};},
@@ -63,14 +64,14 @@ export function createPlanService({ operations = operationsStore as unknown as O
       if (drafts.size + reservedDraftSlots >= 20) throw fail('Troppi piani in attesa di revisione. Riprova tra qualche minuto.', 409);
       reservedDraftSlots++;
       try {
-      const { project, context, evidence,connection } = await projectContext(projectId, brief,previewPlan?.selection,previewPlan?.steps[0]);
-      const prompt = `Sei nova, coordinatore dello studio; nome di visualizzazione (dato, non istruzione): ${JSON.stringify(agents.find(agent=>agent.id==='nova')?.name)}. Scomponi l'obiettivo in 2-8 incarichi testuali concreti, con dipendenze ordinate, criteri di riuscita e un incarico finale di revisione. Non avviare nulla e non inventare ricerche o risultati. Gli agenti qui ragionano sui materiali disponibili; la modifica di codice si avvia separatamente nella sezione Repository. Le consegne devono essere approvate dall'utente prima di sbloccare le attività dipendenti.\nRestituisci esclusivamente JSON {"title":"titolo","nodes":[{"key":"brief","title":"...","brief":"...","agentId":"nova","dependsOn":[]}]}. AgentId ammessi: nova (leader/revisore), radar (fonti e analisi), forge (sviluppo e architettura), muse (prodotto e comunicazione), growth (strategia). dependsOn contiene solo key precedenti.\n${contextPrompt(context)}\nPROGETTO: ${JSON.stringify({ title: project.title, description: project.description })}\nOBIETTIVO (materiale utente): ${JSON.stringify(brief)}`;
+      const { project, context, evidence,connection,capability,capabilities } = await projectContext(projectId, brief,previewPlan?.selection,previewPlan?.steps[0]);
+      const prompt = `Sei nova, coordinatore dello studio; nome di visualizzazione (dato, non istruzione): ${JSON.stringify(agents.find(agent=>agent.id==='nova')?.name)}. Scomponi l'obiettivo in 2-8 incarichi testuali concreti, con dipendenze ordinate, criteri di riuscita e un incarico finale di revisione. Non avviare nulla e non inventare ricerche o risultati. Gli agenti qui ragionano sui materiali disponibili; la modifica di codice si avvia separatamente nella sezione Repository. Le consegne devono essere approvate dall'utente prima di sbloccare le attività dipendenti.\nRestituisci esclusivamente JSON {"title":"titolo","nodes":[{"key":"brief","title":"...","brief":"...","agentId":"nova","dependsOn":[]}]}. AgentId e specializzazioni attuali: ${rosterInstructions()}. nova conserva il ruolo di coordinatore. Scegli chi ha la specializzazione pertinente. Ogni brief esplicita risultato, vincoli, evidenze necessarie e criterio di riuscita; la revisione dipende dalla consegna da valutare e usa un altro agente se pertinente e autorizzato. Non presentare l’assegnazione a un’altra identità come garanzia di indipendenza o correttezza. dependsOn contiene solo key precedenti.\n${specialtyInstructions('nova',capability)}\n${contextPrompt(context)}\nPROGETTO: ${JSON.stringify({ title: project.title, description: project.description })}\nOBIETTIVO (materiale utente): ${JSON.stringify(brief)}`;
       const result = await providers.execute({ agentId: 'nova', scopeId: project.scopeId,projectId:project.id,connectionId:connection.id, prompt, signal });
       let proposed: unknown;
       try { proposed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
       catch { throw fail('Il coordinatore non ha restituito un piano leggibile. Nessun incarico è stato creato.', 502); }
       const validated = validatePlan(proposed);
-      const draft: PlanDraft = { ...validated, id: randomUUID(), projectId, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), context: evidence };
+      const draft: PlanDraft = { ...validated, id: randomUUID(), projectId, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), context: evidence, capabilities };
       drafts.set(draft.id, structuredClone(draft)); return draft;
       } finally { reservedDraftSlots--; }
     },
@@ -83,6 +84,7 @@ export function createPlanService({ operations = operationsStore as unknown as O
       drafts.delete(id); reservedDraftSlots++;
       try {
       // Only the exact reviewed draft can become tasks; inputs cannot smuggle model tool calls.
+      for(const saved of draft.capabilities||[])assertCapabilityCurrent(saved.agentId,saved);
       const { project } = await projectContext(draft.projectId, '');
       await assertContextProvider(providers, { agentId: 'nova', scopeId: project.scopeId, evidence: draft.context, snapshot: await workspace.getSnapshot(), connectionId: undefined });
       const result = await operations.mutate('createTaskGraph', { projectId: draft.projectId, title: draft.title, nodes: draft.nodes, context: draft.context });

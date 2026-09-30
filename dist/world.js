@@ -1,14 +1,16 @@
 import * as THREE from './vendor/three.module.js';
 import { createWildlife } from './wildlife.js';
+import { createWorldExpanse, WORLD_EXTENT, WORLD_LANDMARKS } from './world-expanse.js';
+import { createQualityController, renderPixelRatio } from './world-quality.js';
 
 /* An explorable, entirely geometric miniature world. No external assets. */
 export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () => {}, onCameraChange = () => {}, onInteract = () => {}, onStationPositions = () => {} } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#dcebd9');
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'default' });
   const mobile = window.matchMedia?.('(max-width: 760px)').matches || false;
-  let quality = mobile ? 1 : 1.5;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality));
+  const quality = createQualityController({ compact: mobile, cores: navigator.hardwareConcurrency || 0 });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.profile.pixelRatio));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -21,18 +23,18 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   renderer.domElement.tabIndex = 0;
   host.appendChild(renderer.domElement);
 
-  const camera = new THREE.OrthographicCamera(-14, 14, 12, -12, .1, 240);
+  const camera = new THREE.OrthographicCamera(-14, 14, 12, -12, .1, 800);
   let angle = .62, elevation = .72, width = 1, height = 1, quiet = false, disposed = false;
   let theme = 'anthill', selected = null, elapsed = 0, frame = 0;
   let zoom = 1, overview = false, night = false;
   let antClock = 0, antVisibleCount = 0;
   let activity = { load: 0, problemKey: null, collaboratingIds: [], activeAgentIds: [] };
   let context = { name: 'Fuori Studio', kind: 'workspace', color: '#87b9ac' };
-  let hidden = document.hidden, lastDrawCalls = 0, slowFrames = 0;
-  let wildlife = null;
+  let hidden = document.hidden, inViewport = true, sceneDirty = true, lastDrawCalls = 0;
+  let wildlife = null, expanse = null, cameraFlight = null;
   const stations = [], stationHits = [], stationLabels = [], nightMaterials = [];
   const customGeometries = [], customMaterials = [];
-  const MIN_ZOOM = .22, MAX_ZOOM = 2.8;
+  const MIN_ZOOM = .075, MAX_ZOOM = 2.8;
   const lookAt = new THREE.Vector3(0, .45, 0);
   const mats = new Map();
   const geometryCache = new Map();
@@ -102,31 +104,33 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   }
 
   const hemisphere = new THREE.HemisphereLight('#d8ecf0', '#8b8162', 1.55); scene.add(hemisphere);
-  scene.fog = new THREE.Fog('#e2e9df', 125, 205);
+  scene.fog = new THREE.Fog('#e2e9df', 355, 570);
   const sun = new THREE.DirectionalLight('#fff0d4', 2.4);
   sun.position.set(-24, 45, 28); sun.castShadow = true;
-  sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 38, bottom: -38, near: 1, far: 110 });
   sun.shadow.bias = -.00035; sun.shadow.normalBias = .025;
-  scene.add(sun);
+  scene.add(sun, sun.target);
   const fill = new THREE.DirectionalLight('#d8efff', .36); fill.position.set(10, 8, -8); scene.add(fill);
 
   const foundation = group(scene);
   const baseMat = material('#a0b98f');
   const earthMat = material('#adbd94');
   baseMat.userData.liveColor=true;earthMat.userData.liveColor=true;
-  box(foundation, 0, -1.17, 0, 60, 2.18, 50, earthMat);
-  box(foundation,0,-2.39,0,59.1,.4,49.1,'#685441');
-  box(foundation,0,-2.66,0,58.3,.15,48.3,'#4e493c');
-  for(let i=0;i<24;i++) {
-    const h=.16+random()*.18, x=-28.7+i*2.45;
-    box(foundation,x,-.85-random()*.6,25.015,1.3+random(),h,.026,i%2?'#b39a6c':'#7d684c');
-    box(foundation,x,-1.8+random()*.18,25.023,1.7+random()*.65,.07,.03,'#c0a983');
+  const halfWorldX = WORLD_EXTENT.width / 2, halfWorldZ = WORLD_EXTENT.depth / 2;
+  box(foundation, 0, -1.17, 0, WORLD_EXTENT.width, 2.18, WORLD_EXTENT.depth, earthMat);
+  box(foundation,0,-2.39,0,WORLD_EXTENT.width-.9,.4,WORLD_EXTENT.depth-.9,'#685441');
+  box(foundation,0,-2.66,0,WORLD_EXTENT.width-1.7,.15,WORLD_EXTENT.depth-1.7,'#4e493c');
+  for(let i=0;i<72;i++) {
+    const h=.16+random()*.18, x=-halfWorldX+1.3+i*2.45;
+    box(foundation,x,-.85-random()*.6,halfWorldZ+.015,1.3+random(),h,.026,i%2?'#b39a6c':'#7d684c');
+    box(foundation,x,-1.8+random()*.18,halfWorldZ+.023,1.7+random()*.65,.07,.03,'#c0a983');
   }
-  for(let i=0;i<20;i++) box(foundation,30.017,-.7-random()*.9,-23+i*2.4,.03,.16+random()*.17,1.3+random(),i%2?'#b39a6c':'#7d684c');
-  box(foundation, 0, -.17, 0, 60.2, .18, 50.2, baseMat);
+  for(let i=0;i<60;i++) box(foundation,halfWorldX+.017,-.7-random()*.9,-halfWorldZ+2+i*2.4,.03,.16+random()*.17,1.3+random(),i%2?'#b39a6c':'#7d684c');
+  // Keep the cap above earth (-.08), but below the original painted ground (-.064 ± .003).
+  box(foundation, 0, -.16, 0, WORLD_EXTENT.width+.2, .18, WORLD_EXTENT.depth+.2, baseMat);
   // A dark green rim and small stepping stones make the floating island read as a toy.
-  box(foundation, 0, -2.77, 0, 57.7, .12, 47.7, '#4c683e');
+  box(foundation, 0, -2.77, 0, WORLD_EXTENT.width-2.3, .12, WORLD_EXTENT.depth-2.3, '#4c683e');
   bake(foundation);
   const courtyard = group(scene);
   const pathMat = material('#e9d5a3');
@@ -375,7 +379,9 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     }
     sparkGeometry.attributes.position.needsUpdate=true;
   }
-  const sky = group(scene), moon=group(sky,-20,20,-23);
+  // Keep the moon beyond the working districts; a nearby moon crosses the
+  // ground in the camera projection when exploring the outer landmarks.
+  const sky = group(scene), moon=group(sky,-84,30,-65);
   const moonMat=new THREE.MeshBasicMaterial({color:'#f2edca'});customMaterials.push(moonMat);
   const moonBody=mesh(moon,geo('ico',1.8,3),moonMat,0,0,0);moonBody.castShadow=moonBody.receiveShadow=false;
   const moonHaloMat=new THREE.MeshBasicMaterial({color:'#b5c6d0',transparent:true,opacity:.045,depthWrite:false});customMaterials.push(moonHaloMat);
@@ -701,7 +707,7 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   }
   function updateAnts() {
     let outputIndex=0;
-    const density=.4+activity.load*.6, threat=wildlife?.getAntTarget?.();
+    const density=(.4+activity.load*.6)*(quality.tier==='lite'?.55:quality.tier==='balanced'?.8:1), threat=wildlife?.getAntTarget?.();
     ants.forEach((ant, sourceIndex) => {
       if((sourceIndex%10)/10>=density) return;
       const index=outputIndex++;
@@ -870,47 +876,77 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
 
   Object.values(themes).forEach(bake);
   wildlife=createWildlife(scene);
+  expanse=createWorldExpanse({scene,group,mesh,box,cyl,cone,geo,material,bake,beam});
 
   // A pale underside shadow makes the island float without an expensive contact pass.
-  const floor = mesh(scene, geo('box', 200, .1, 200), material('#dcebd9'), 0, -2.94, 0); floor.castShadow = false;
+  const floor = mesh(scene, geo('box', 640, .1, 640), material('#dcebd9'), 0, -2.94, 0); floor.castShadow = false;
   const selection = new THREE.Mesh(new THREE.RingGeometry(.72, .79, 40), new THREE.MeshBasicMaterial({ color: '#f5da90', side: THREE.DoubleSide, transparent: true, opacity: .95, depthWrite: false }));
   selection.rotation.x = -Math.PI / 2; selection.visible = false; scene.add(selection);
 
   function updateCamera() {
-    const distance = 105, aspect = width / height;
+    sceneDirty=true;
+    const distance = 320, aspect = width / height;
     const halfY = Math.max(10.0, 14.7 / aspect);
     if (overview) {
-      const extentX = Math.abs(Math.cos(angle)) * 31 + Math.abs(Math.sin(angle)) * 26;
-      const extentY = Math.sin(elevation) * (Math.abs(Math.sin(angle)) * 31 + Math.abs(Math.cos(angle)) * 26) + Math.cos(elevation) * 6;
+      const extentX = Math.abs(Math.cos(angle)) * (halfWorldX+3) + Math.abs(Math.sin(angle)) * (halfWorldZ+3);
+      const extentY = Math.sin(elevation) * (Math.abs(Math.sin(angle)) * (halfWorldX+3) + Math.abs(Math.cos(angle)) * (halfWorldZ+3)) + Math.cos(elevation) * 16;
       zoom = THREE.MathUtils.clamp(Math.min(halfY * aspect / extentX, halfY / extentY) * .9, MIN_ZOOM, MAX_ZOOM);
     }
     camera.position.set(lookAt.x + Math.sin(angle) * Math.cos(elevation) * distance, lookAt.y + Math.sin(elevation) * distance, lookAt.z + Math.cos(angle) * Math.cos(elevation) * distance);
     camera.lookAt(lookAt);
     camera.left = -halfY * aspect; camera.right = halfY * aspect; camera.top = halfY; camera.bottom = -halfY;
     camera.zoom = zoom; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
-    onCameraChange({ zoom, overview });
+    // Keep detailed shadows around the viewed district rather than stretching one map across the continent.
+    const shadowSpan = THREE.MathUtils.clamp(halfY / zoom * 1.6, 24, 56);
+    sun.position.set(lookAt.x-24,45,lookAt.z+28);sun.target.position.set(lookAt.x,0,lookAt.z);
+    Object.assign(sun.shadow.camera,{left:-shadowSpan,right:shadowSpan,top:shadowSpan,bottom:-shadowSpan});
+    sun.shadow.camera.updateProjectionMatrix();
+    onCameraChange({ zoom, overview, target:{x:lookAt.x,z:lookAt.z}, angle,elevation,worldBounds:{...WORLD_EXTENT}, qualityMode:quality.mode,qualityTier:quality.tier });
   }
   function zoomBy(factor) {
     if (!Number.isFinite(factor) || factor <= 0) return;
-    overview = false; zoom = THREE.MathUtils.clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM); updateCamera();
+    cameraFlight=null;overview = false; zoom = THREE.MathUtils.clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM); updateCamera();
   }
   function panCamera(dx, dy) {
     const scale = (camera.top - camera.bottom) / zoom / height;
-    lookAt.x = THREE.MathUtils.clamp(lookAt.x - dx * scale * Math.cos(angle) + dy * scale * Math.sin(angle) / Math.sin(elevation), -26, 26);
-    lookAt.z = THREE.MathUtils.clamp(lookAt.z + dx * scale * Math.sin(angle) + dy * scale * Math.cos(angle) / Math.sin(elevation), -21, 21);
+    cameraFlight=null;
+    lookAt.x = THREE.MathUtils.clamp(lookAt.x - dx * scale * Math.cos(angle) + dy * scale * Math.sin(angle) / Math.sin(elevation), -halfWorldX+5, halfWorldX-5);
+    lookAt.z = THREE.MathUtils.clamp(lookAt.z + dx * scale * Math.sin(angle) + dy * scale * Math.cos(angle) / Math.sin(elevation), -halfWorldZ+5, halfWorldZ-5);
     overview = false; updateCamera();
   }
-  function showOverview() { lookAt.set(0, .45, 0); overview = true; updateCamera(); }
+  function showOverview() { cameraFlight=null;lookAt.set(0, .45, 0); overview = true; updateCamera(); }
+  function getLandmarks(){return [{id:'studio',label:'Lo studio',x:0,z:0,zoom:1},...(WORLD_LANDMARKS[theme]||[])].map(place=>({...place}));}
+  function focusLandmark(id){
+    const destination=getLandmarks().find(place=>place.id===id);if(!destination)return false;
+    overview=false;
+    if(quiet){lookAt.set(destination.x,.45,destination.z);zoom=destination.zoom;updateCamera();}
+    else cameraFlight={fromX:lookAt.x,fromZ:lookAt.z,fromZoom:zoom,to:destination,progress:0};
+    return true;
+  }
+  function applyQuality(){
+    const profile=quality.profile;
+    renderer.setPixelRatio(renderPixelRatio(profile,window.devicePixelRatio,width,height));renderer.setSize(width,height,false);
+    renderer.shadowMap.enabled=profile.shadowSize>0;
+    if(profile.shadowSize&&sun.shadow.mapSize.x!==profile.shadowSize){sun.shadow.map?.dispose();sun.shadow.map=null;sun.shadow.mapSize.set(profile.shadowSize,profile.shadowSize);}
+    renderer.shadowMap.needsUpdate=true;updateAnts();updateCamera();
+  }
+  function setQuality(mode){quality.setMode(mode);applyQuality();return quality.tier;}
   function resize() {
     width = Math.max(1, host.clientWidth); height = Math.max(1, host.clientHeight);
-    renderer.setSize(width, height, false); updateCamera();
+    quality.reset();applyQuality();
   }
   const observer = new ResizeObserver(resize); observer.observe(host); resize();
+  const viewportObserver=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{
+    inViewport=entries[0]?.isIntersecting!==false;cancelAnimationFrame(frame);
+    if(inViewport&&!hidden&&!disposed){lastTime=performance.now();quality.reset();sceneDirty=true;frame=requestAnimationFrame(animate);}
+  },{rootMargin:'80px'}):null;
+  viewportObserver?.observe(host);
 
   const activePointers = new Map();
   let pointerStartX = 0, pointerStartY = 0, dragged = false, panGesture = false;
   function pointerDown(event) {
     if (event.button !== 0 && event.button !== 2) return;
+    cameraFlight=null;
     renderer.domElement.focus({ preventScroll: true });
     if (activePointers.size === 0) {
       pointerStartX = event.clientX; pointerStartY = event.clientY; dragged = false;
@@ -956,7 +992,7 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
       if (hits.length) {
         const data=hits[0].object.userData;
         if(data.stationKind){const station=stations.find(s=>s.id===data.stationId);onInteract({kind:data.stationKind,label:station?.label||data.stationKind});}
-        else {selected=agents.find(a=>a.id===data.agentId);if(selected)onSelect(selected.id);}
+        else {selected=agents.find(a=>a.id===data.agentId);sceneDirty=true;if(selected)onSelect(selected.id);}
       }
     }
     activePointers.delete(event.pointerId);
@@ -967,6 +1003,7 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   function wheel(event) { event.preventDefault(); zoomBy(Math.exp(-THREE.MathUtils.clamp(event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1), -200, 200) * .0015)); }
   function contextMenu(event) { event.preventDefault(); }
   function keyDown(event) {
+    cameraFlight=null;
     if (event.key === '+' || event.key === '=') { zoomBy(1.18); event.preventDefault(); return; }
     if (event.key === '-' || event.key === '_') { zoomBy(1 / 1.18); event.preventDefault(); return; }
     if (event.key === '0') { showOverview(); event.preventDefault(); return; }
@@ -1045,8 +1082,17 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
 
   let lastTime = performance.now();
   function animate(now) {
-    if(disposed||hidden) return;
-    const dt=THREE.MathUtils.clamp((now-lastTime)/1000,0,.06);lastTime=now;
+    if(disposed||hidden||!inViewport) return;
+    if(quiet&&!sceneDirty&&!cameraFlight){lastTime=now;frame=requestAnimationFrame(animate);return;}
+    const frameMilliseconds=now-lastTime,dt=THREE.MathUtils.clamp(frameMilliseconds/1000,0,.06);lastTime=now;
+    if(cameraFlight){
+      cameraFlight.progress=Math.min(1,cameraFlight.progress+dt/0.8);
+      const t=cameraFlight.progress,blend=t*t*(3-2*t),flight=cameraFlight;
+      lookAt.x=THREE.MathUtils.lerp(flight.fromX,flight.to.x,blend);lookAt.z=THREE.MathUtils.lerp(flight.fromZ,flight.to.z,blend);
+      zoom=THREE.MathUtils.lerp(flight.fromZoom,flight.to.zoom,blend);
+      if(t===1)cameraFlight=null;
+      updateCamera();
+    }
     if(!quiet){elapsed+=dt;antClock+=dt*(.3+activity.load*1.45);}
     for(const a of agents)pose(a,dt);
     if(theme==='anthill'&&!quiet)updateAnts();
@@ -1055,25 +1101,25 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     if(theme==='beach'&&!quiet)waveStrips.forEach((w,i)=>{w.scale.x=1+Math.sin(elapsed*1.1+i)*.15;w.position.y=.035+Math.sin(elapsed*.8+i)*.011;});
     screens.forEach((s,i)=>{s.material.emissiveIntensity=(night?.5:.18)+(quiet?0:(Math.sin(elapsed*1.6+i)*.5+.5)*.2);});
     if(selected){selection.visible=true;selection.position.set(selected.root.position.x,.15,selected.root.position.z);}
-    renderer.render(scene,camera);lastDrawCalls=renderer.info.render.calls;
+    expanse.update({x:lookAt.x,z:lookAt.z,viewRadius:Math.hypot(camera.right,camera.top/Math.sin(elevation))/zoom,quality:quality.tier,elapsed,night,quiet});
+    renderer.render(scene,camera);lastDrawCalls=renderer.info.render.calls;sceneDirty=false;
     for(const a of agents){
       scratch.set(a.root.position.x,3.0+a.visual.position.y,a.root.position.z).project(camera);
       a.position.x=(scratch.x*.5+.5)*width;a.position.y=(-scratch.y*.5+.5)*height;
-      a.position.visible=scratch.z>-1&&scratch.z<1&&scratch.x>-.98&&scratch.x<.98&&scratch.y>-.98&&scratch.y<.98;
+      a.position.visible=zoom>=.28&&scratch.z>-1&&scratch.z<1&&scratch.x>-.98&&scratch.x<.98&&scratch.y>-.98&&scratch.y<.98;
     }
     for(let i=0;i<stations.length;i++){
       const station=stations[i],label=stationLabels[i];scratch.set(station.x,station.kind==='meeting'?4.65:3.55,station.z).project(camera);
       label.x=(scratch.x*.5+.5)*width;label.y=(-scratch.y*.5+.5)*height;
-      label.visible=scratch.z>-1&&scratch.z<1&&scratch.x>-.96&&scratch.x<.96&&scratch.y>-.96&&scratch.y<.96;
+      label.visible=zoom>=.28&&scratch.z>-1&&scratch.z<1&&scratch.x>-.96&&scratch.x<.96&&scratch.y>-.96&&scratch.y<.96;
     }
     onPositions(labels);onStationPositions(stationLabels);
-    // Reduce fill cost on sustained slow devices, without changing the world.
-    slowFrames=dt>.034?slowFrames+1:Math.max(0,slowFrames-2);
-    if(slowFrames>150&&quality>1){quality=1;renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,quality));renderer.setSize(width,height,false);slowFrames=0;}
+    if(!quiet&&quality.sample(frameMilliseconds))applyQuality();
     frame=requestAnimationFrame(animate);
   }
   const palettes={anthill:['#e1e8da','#9eaa6c','#9b724b'],forest:['#d9e7df','#78a761','#8b724e'],beach:['#dcebe7','#dfca92','#ba9867'],mountains:['#dce6e5','#9ca78d','#899687']};
   function updateLighting(){
+    sceneDirty=true;
     const palette=palettes[theme];
     scene.background.set(night?'#152334':palette[0]);floor.material.color.copy(scene.background);scene.fog.color.copy(scene.background);
     baseMat.color.set(palette[1]);earthMat.color.set(palette[2]);
@@ -1087,10 +1133,11 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     const aliases={formicaio:'anthill',ants:'anthill',foresta:'forest',bosco:'forest',spiaggia:'beach',montagna:'mountains',mountain:'mountains'};
     theme=aliases[name]||name;if(!themes[theme])theme='anthill';
     Object.entries(themes).forEach(([key,g])=>g.visible=key===theme);water.visible=theme==='beach';antLayer.visible=theme==='anthill';
-    wildlife.setLandscape(theme);updateLighting();
+    cameraFlight=null;expanse.setTheme(theme);quality.reset();wildlife.setLandscape(theme);updateLighting();updateCamera();
   }
   function setNight(value){night=!!value;updateLighting();}
   function setActivity(next={}){
+    sceneDirty=true;
     const validIds=ids=>Array.isArray(ids)?[...new Set(ids.filter(id=>cast.some(a=>a.id===id)))]:[];
     const collaboratingIds=validIds(next.collaboratingIds),activeAgentIds=validIds(next.activeAgentIds);
     activity={load:THREE.MathUtils.clamp(Number(next.load)||0,0,1),problemKey:typeof next.problemKey==='string'?next.problemKey:null,collaboratingIds:collaboratingIds.length>=2?collaboratingIds:[],activeAgentIds};
@@ -1102,27 +1149,29 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
     wildlife.setActivity({load:activity.load,problemKey:activity.problemKey});updateAnts();
   }
   function setContext(next={}){
+    sceneDirty=true;
     context={name:typeof next.name==='string'?next.name.slice(0,120):context.name,kind:typeof next.kind==='string'?next.kind:context.kind,color:/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(next.color||'')?next.color:context.color};
     if(contextBeacon){contextBeacon.material.color.set(context.color);contextBeacon.material.emissive.set(context.color);}
   }
   function setAgentStatus(id,status){
+    sceneDirty=true;
     const a=agents.find(person=>person.id===id);if(!a)return;a.status=String(status);
     a.working=activity.activeAgentIds.includes(id)||/lavor|work|busy|active|thinking|running|scriv|pens|coordin/i.test(a.status);
   }
-  function setQuiet(value){quiet=!!value;updateFire();}
-  function resetCamera(){angle=.62;elevation=.72;zoom=1;overview=false;lookAt.set(0,.45,0);updateCamera();}
-  function getDiagnostics(){return {theme,night,quiet,hidden,zoom,overview,context:{...context},activity:{...activity,collaboratingIds:[...activity.collaboratingIds],activeAgentIds:[...activity.activeAgentIds]},fireVisible:fireRoot.visible&&night,fireLit:night,fireBaseVisible:fireRoot.visible,fireLightIntensity:fireLight.intensity,meetingIds:agents.filter(a=>a.meetingTarget).map(a=>a.id),meetingArrivedIds:agents.filter(a=>a.meetingTarget&&a.travel>.985).map(a=>a.id),stations:stations.map(({id,kind,label})=>({id,kind,label})),activeAnts:theme==='anthill'?antVisibleCount:0,drawCalls:lastDrawCalls,pixelRatio:renderer.getPixelRatio(),triangles:renderer.info.render.triangles,wildlife:wildlife.getDiagnostics()};}
+  function setQuiet(value){quiet=!!value;sceneDirty=true;quality.reset();if(quiet&&cameraFlight){lookAt.set(cameraFlight.to.x,.45,cameraFlight.to.z);zoom=cameraFlight.to.zoom;cameraFlight=null;updateCamera();}updateFire();}
+  function resetCamera(){cameraFlight=null;angle=.62;elevation=.72;zoom=1;overview=false;lookAt.set(0,.45,0);updateCamera();}
+  function getDiagnostics(){return {theme,night,quiet,hidden,zoom,overview,target:{x:lookAt.x,z:lookAt.z},worldBounds:{...WORLD_EXTENT},qualityMode:quality.mode,qualityTier:quality.tier,landmarks:getLandmarks(),expanse:expanse.getDiagnostics(),context:{...context},activity:{...activity,collaboratingIds:[...activity.collaboratingIds],activeAgentIds:[...activity.activeAgentIds]},fireVisible:fireRoot.visible&&night,fireLit:night,fireBaseVisible:fireRoot.visible,fireLightIntensity:fireLight.intensity,meetingIds:agents.filter(a=>a.meetingTarget).map(a=>a.id),meetingArrivedIds:agents.filter(a=>a.meetingTarget&&a.travel>.985).map(a=>a.id),stations:stations.map(({id,kind,label})=>({id,kind,label})),activeAnts:theme==='anthill'?antVisibleCount:0,drawCalls:lastDrawCalls,pixelRatio:renderer.getPixelRatio(),triangles:renderer.info.render.triangles,wildlife:wildlife.getDiagnostics()};}
   function visibilityChange(){
     hidden=document.hidden;cancelAnimationFrame(frame);
-    if(!hidden&&!disposed){lastTime=performance.now();frame=requestAnimationFrame(animate);}
+    if(!hidden&&inViewport&&!disposed){lastTime=performance.now();quality.reset();sceneDirty=true;frame=requestAnimationFrame(animate);}
   }
   document.addEventListener('visibilitychange',visibilityChange);
   function dispose(){
-    disposed=true;cancelAnimationFrame(frame);observer.disconnect();document.removeEventListener('visibilitychange',visibilityChange);
+    disposed=true;cancelAnimationFrame(frame);observer.disconnect();viewportObserver?.disconnect();document.removeEventListener('visibilitychange',visibilityChange);
     const canvas=renderer.domElement;
     canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',pointerCancel);
     canvas.removeEventListener('lostpointercapture',pointerCancel);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('contextmenu',contextMenu);canvas.removeEventListener('keydown',keyDown);
-    activePointers.clear();wildlife.dispose();antSystems.forEach(instances=>instances.dispose());
+    activePointers.clear();expanse.dispose();wildlife.dispose();antSystems.forEach(instances=>instances.dispose());
     geometryCache.forEach(g=>g.dispose());mergedGeometries.forEach(g=>g.dispose());customGeometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());customMaterials.forEach(m=>m.dispose());
     agents.forEach(a=>{a.hit.material.dispose();a.halo.material.dispose();a.halo.geometry.dispose();});stationHits.forEach(hit=>hit.material.dispose());
     sun.shadow.map?.dispose();selection.material.dispose();selection.geometry.dispose();renderer.dispose();canvas.remove();
@@ -1130,5 +1179,5 @@ export function createOfficeWorld(host, { onSelect = () => {}, onPositions = () 
   quiet=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches||false;
   setLandscape('anthill');setActivity({});updateFire();
   if(!hidden)frame=requestAnimationFrame(animate);
-  return {setLandscape,setAgentStatus,setQuiet,setNight,setActivity,setContext,getDiagnostics,zoomBy,showOverview,resetCamera,dispose};
+  return {setLandscape,setAgentStatus,setQuiet,setNight,setActivity,setContext,setQuality,getLandmarks,focusLandmark,getDiagnostics,zoomBy,showOverview,resetCamera,dispose};
 }

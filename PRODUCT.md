@@ -1,10 +1,12 @@
 # Product direction
 
-Updated 2026-09-28.
+Updated 2026-09-30.
 
 Fuori Studio helps its owner develop proprietary products and grow as an entrepreneur and software developer. Consulting remains a supported secondary activity. Personal projects live alongside professional work without becoming automatically available to professional agents.
 
 The product's value is continuity: decisions become reusable context, work has a visible state, deliverables are reviewable, and an AI service can be changed without losing the project's records. More agents are not inherently better; use a workflow only when its additional steps improve the result.
+
+The five persistent teammates can adopt curated specialties for different work, including code review, QA, UX, product strategy, technical writing and data analysis. A specialty defines how to reason about supplied material and what a useful delivery contains; it does not confer tools, permissions or another model subscription. The coordinator still routes only to authorized teammates, and dependent work belongs in a reviewed sequential plan. Capability changes are versioned and invalidate old execution previews.
 
 ## Product principles
 
@@ -16,6 +18,7 @@ The product's value is continuity: decisions become reusable context, work has a
 - **Learning under user control.** Assisted proposals are the default. Automatic saving requires an explicit scope/category policy and source-verified user statements; inference and conflicts remain reviewable.
 - **Portable ownership.** Local use stays complete. Selected knowledge can be exported without an account, credentials or mandatory cloud synchronization.
 - **Calm visual environment.** Anthill, forest, beach and mountain are graphic themes. Animals are decorative. Actual task status drives worker activity.
+- **Scalable exploration.** Each 180 × 150 landscape keeps the team at its center and adds named destinations around it. Automatic graphics quality adapts presentation to observed frame delivery; manual quality choices keep the same map, work tools and access rules. Visual complexity never counts as work or model progress.
 
 ## Current working loop
 

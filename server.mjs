@@ -5,7 +5,8 @@ import { createStudioSearch } from './lib/studio-search.ts';
 import { prepareWorkflowTask } from './lib/workflow-inputs.mjs';
 import { createWorkflowLearning } from './lib/workflow-learning.ts';
 import { createTeamStore } from './lib/team.ts';
-import { applyAgentNames } from './dist/data.js';
+import { applyAgentNames, applyAgentProfiles } from './dist/data.js';
+import { createAgentCapabilitiesStore } from './lib/agent-capabilities.ts';
 import { createServer } from 'node:http';
 import { readFile, stat, realpath, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -67,6 +68,7 @@ const repositoryWork = createRepositoryWork({
 const github = createGitHub({ storage: defaultArchive, workspace: workspaceStore, approvedRun: input => repositoryWork.approvedPublication(input) });
 const workflowLearning = createWorkflowLearning({operations:operationsStore,workspace:workspaceStore});
 const team = createTeamStore({storage:defaultArchive});
+const agentCapabilities = createAgentCapabilitiesStore({storage:defaultArchive});
 const evaluations = createMemoryEvaluations({ storage: defaultArchive, workspace: workspaceStore });
 const sources = createSourceStore({
   storage: defaultArchive, workspace: workspaceStore, mode,
@@ -104,7 +106,7 @@ async function body(req, limit = 120000) {
 }
 let changing = false, closing = false, routineError = null;
 const releaseLock = await acquireInstanceLock(resolve(process.env.FUORI_STUDIO_DATA_DIR || resolve(appRoot, '.local')));
-try { await defaultArchive.init(); applyAgentNames((await team.snapshot()).names); await identity.init(); await devices.recover(); await repositoryDevices.recover(); await getState(); await operationsStore.recoverInterrupted(); await providerStore.getSnapshot(); await repositoryWork.recoverInterrupted(); await governance.recoverInterrupted(); await github.recover(); await sources.allMetadata(); }
+try { await defaultArchive.init(); applyAgentNames((await team.snapshot()).names); applyAgentProfiles(await agentCapabilities.snapshot()); await identity.init(); await devices.recover(); await repositoryDevices.recover(); await getState(); await operationsStore.recoverInterrupted(); await providerStore.getSnapshot(); await repositoryWork.recoverInterrupted(); await governance.recoverInterrupted(); await github.recover(); await sources.allMetadata(); }
 catch (error) { await releaseLock(); throw error; }
 const isBusy = async () => taskExecutor.busy || repositoryWork.busy || (await getState()).busy;
 const requireIdle = async () => { if (await isBusy()) throw fail('Attendi la risposta del team o metti in pausa l’incarico prima di modificare il contesto o i servizi.', 409); };
@@ -228,6 +230,7 @@ const server = createServer(async (req, res) => {
       if(req.method==='GET'&&pathname==='/api/search'){json(res,200,await studioSearch.search({scopeId:url.searchParams.get('scopeId'),query:url.searchParams.get('q')||'',...(url.searchParams.has('kinds')?{kinds:url.searchParams.get('kinds').split(',').filter(Boolean)}:{}),offset:Number(url.searchParams.get('offset')||0),limit:Number(url.searchParams.get('limit')||30)}));return;}
       if(req.method==='GET'&&pathname==='/api/search/original'){json(res,200,await studioSearch.original(Object.fromEntries(['scopeId','kind','id','conversationId','sourceScopeId'].filter(key=>url.searchParams.has(key)).map(key=>[key,url.searchParams.get(key)]))));return;}
       if(req.method==='GET'&&pathname==='/api/budgets'){json(res,200,await governance.budgets());return;}
+      if (req.method === 'GET' && pathname === '/api/team/capabilities') { json(res, 200, await agentCapabilities.snapshot()); return; }
       if (req.method === 'GET' && pathname === '/api/team') { json(res, 200, await team.snapshot()); return; }
       if (req.method === 'GET' && pathname === '/api/setup') { json(res, 200, await setupSnapshot(req)); return; }
       if (req.method === 'GET' && pathname === '/api/github') { json(res, 200, await github.snapshot()); return; }
@@ -314,6 +317,7 @@ const server = createServer(async (req, res) => {
           if (!['preview','save'].includes(payload.action)) throw fail('Azione procedura non disponibile.');
           json(res,200,await workflowLearning[payload.action](payload.payload)); return;
         }
+        if (pathname === '/api/team/capabilities') { await requireIdle(); const value=await agentCapabilities.assign(payload); applyAgentProfiles(value); json(res,200,value); return; }
         if (pathname === '/api/team') { await requireIdle(); const value=await team.rename(payload); applyAgentNames(value.names); json(res,200,value); return; }
         if (pathname === '/api/maintenance') {
           await requireIdle();
@@ -446,7 +450,10 @@ server.requestTimeout = 30000;
 server.headersTimeout = 15000;
 server.on('error', async error => { clearInterval(scheduler); await releaseLock(); console.error(error.code === 'EADDRINUSE' ? `La porta ${port} è già occupata. Prova PORT=4387 npm start.` : error.message); process.exitCode = 1; });
 server.listen(port, bindHost, () => { console.log(`Fuori Studio è pronto: ${publicOrigin}/ (${mode})`); void tick(); });
-for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
+// Keep listeners installed while cleanup awaits: terminals and npm may forward
+// the same signal twice, which must not restore Node's immediate-exit default.
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
+  if (closing) return;
   closing = true; clearInterval(scheduler); shutdownChat(); server.close();
   try { await Promise.allSettled([taskExecutor.shutdown(), repositoryWork.shutdown()]); await defaultArchive.close(); await releaseLock(); } finally { process.exit(0); }
 });

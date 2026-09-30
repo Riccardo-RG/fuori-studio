@@ -31,7 +31,7 @@ export function createExecutionPreview({prepare,budget,destinations=async plan=>
       budget:allowance,reviewUnavailable:plan.reviewUnavailable||null,
       steps:plan.steps.map(step=>{
         const available=step.availableContext||step.context,required=locked(step);
-        return {agentId:step.agentId,title:step.title,provider:step.connection,destination:step.destination,
+        return {agentId:step.agentId,title:step.title,provider:step.connection,destination:step.destination,capability:step.capability||null,
           memories:(available?.memories||[]).map((item:Data)=>({...item,included:step.context.memories.some((chosen:Data)=>chosen.id===item.id),locked:required.memories.some((ref:Data)=>ref.id===item.id)})),
           sources:(available?.sources||[]).map((item:Data)=>({...item,included:(step.context.sources||[]).some((chosen:Data)=>chosen.id===item.id),locked:required.sources.some((ref:Data)=>ref.id===item.id),passages:(available.passages||[]).filter((passage:Data)=>passage.sourceId===item.id)})),
           workflow:step.context?.workflow||null,history:(step.history||[]).map((message:Data)=>({id:message.id,role:message.role,agentId:message.agentId,text:message.text.slice(0,9000)})),
@@ -60,7 +60,7 @@ export function createExecutionPreview({prepare,budget,destinations=async plan=>
       // cannot authorize the same reviewed execution twice.
       receipts.delete(previewId as string);
       const current=await build(receipt.input);
-      if(digest(current)!==receipt.hash)throw fail('Contesto, servizi o budget sono cambiati. Aggiorna l’anteprima prima di avviare.');
+      if(digest(current)!==receipt.hash)throw fail('Contesto, specializzazioni, servizi o budget sono cambiati. Aggiorna l’anteprima prima di avviare.');
       if(!current.allowance.allowed)throw fail('Il budget disponibile non copre le chiamate previste. Rivedi i limiti prima di avviare.');
       return current.plan;
     },

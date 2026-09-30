@@ -54,6 +54,7 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Storage | SQLite transactions with authenticated encrypted records and encrypted migration backups |
 | Procedures | Reviewed methods from approved text deliveries; versioned instructions with reusable materials, objective, constraints and deliverable fields |
 | AI services | Local Codex; API adapters for OpenAI, Anthropic, DeepSeek, OpenRouter |
+| Agent specialties | Eleven curated profiles across five persistent teammates, with expected deliverables, evidence/handoff instructions and versioned execution previews |
 | Provider controls | Per-agent service assignment, scope allowlists, no silent provider fallback |
 | Call budgets | Atomic daily, project-lifetime and assignment-lifetime ceilings, including failed attempts and revisions; no invented monetary estimate |
 | Routines | Queued by default; optional explicit autonomous start with durable daily call/run limits |
@@ -62,9 +63,9 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Web research | Explicit OpenAI Responses web search, domain filters, clickable citations and recorded provenance |
 | Plans | Coordinator proposal, reviewed dependency graph, approved predecessor deliveries before execution |
 | Outcomes | Scoped project/procedure comparisons from the full retained call ledger, reviewed deliveries and explicit usefulness feedback; missing feedback and self-reported savings remain visible |
-| Office | Four living dioramas, local-time day/night, fires, interactive workstations, collaboration area and immersive work panels |
+| Office | Four large explorable landscapes, landmark atlas, adaptive graphics, local-time day/night, wildlife, interactive workstations and immersive work panels |
 
-The team is **Riccardo** (AI leader), **Raffaele** (research), **Big Fonz** (product/development), **D’albenzio** (content), and **Cicciolina** (business). Riccardo the AI character is distinct from the human user.
+The default team is **Riccardo** (AI leader), **Raffaele** (research), **Big Fonz** (product/development), **D’albenzio** (content), and **Cicciolina** (business). Their names and specialties can be changed from their cards; Riccardo's stable coordinator identity still leads routing. Specialties also include code review, QA, UX, product strategy, technical writing and data analysis. They do not grant tools or permissions. Riccardo the AI character is distinct from the human user. See [agent specialties and research](docs/AGENT_CAPABILITIES.md).
 
 ## Local data
 
@@ -148,6 +149,10 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 ## Office controls
 
 Drag to rotate, wheel or **+ / −** to zoom, Shift/right-drag to pan. On touch devices, pinch to zoom and drag with two fingers to pan. **Panorama** shows the whole landscape; **Torna al team**, R or Home resets the view. Arrow keys rotate. Quiet mode and the system reduced-motion preference pause decorative animation.
+
+**Esplora / Explore** opens the landscape atlas: select a numbered map pin or named destination to travel to one of five places around the studio. Each of the four landscapes covers a 180 × 150 world, with the team in its original central clearing. The atlas marks the current camera centre and offers a direct return to the studio. Exploring never starts AI work.
+
+Graphics default to **Automatic**, which adjusts detail from sustained rendering performance. **Light**, **Balanced** and **Detailed** select a fixed level; the setting is saved in this browser. Every level keeps the landscape, destinations and work tools. The **?** beside Graphics explains the choice, and the atlas shows the current automatic level. Rendering pauses when the scene is offscreen or the page is hidden.
 
 Open a computer or use the scene's bottom dock to reach projects, memory, procedures and context. **Tutto schermo** expands the studio with usable work panels. **Ora locale** follows the device clock (day 07:00–19:00); **Sempre giorno** and **Sempre notte** override it. Every landscape has a lit campfire at night. Small **?** controls explain features on hover, keyboard focus or tap. There is no audio.
 

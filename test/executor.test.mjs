@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { createOperationsStore } from '../lib/operations.mjs';
 import { createWorkspaceStore } from '../lib/workspace.mjs';
 import { createTaskExecutor } from '../lib/executor.mjs';
+import {createExecutionPreview} from '../lib/execution-preview.ts';
+import {applyAgentProfiles} from '../dist/data.js';
+import {defaultAgentProfiles} from '../dist/agent-profiles.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check, label, limit = 5000) {
@@ -45,6 +48,26 @@ async function workflow(workspace) {
   return (await workspace.mutate('saveWorkflow', { scopeId: 'business', title: 'Research and draft', description: 'Process fixture', input: 'Supplied evidence', output: 'Reviewed draft', status: 'ready', steps: [{ title: 'Research', agentId: 'radar', output: 'List supported findings.' }, { title: 'Draft', agentId: 'forge', output: 'Propose the next milestone.' }] })).workflows.at(-1);
 }
 const workflowSteps = record => record.steps.map(step => ({ title: step.title, agentId: step.agentId, instruction: step.output }));
+
+test('specialty changes invalidate reviewed execution before AI calls and fresh runs record the selected profile',async t=>{
+  const f=await fixture(t);t.after(()=>applyAgentProfiles({version:1,profiles:defaultAgentProfiles}));
+  applyAgentProfiles({version:2,profiles:{...defaultAgentProfiles,forge:'qa'}});
+  const task=await f.createTask(),input={kind:'task',id:task.id,expectedVersion:task.version};
+  const previews=createExecutionPreview({prepare:{task:input=>f.executor.preview(input.id,input.expectedVersion)},budget:async()=>({allowed:true,remaining:5})});
+  const reviewed=await previews.preview(input),direct=await f.executor.preview(task.id,task.version);
+  assert.equal(reviewed.steps[0].capability.profileId,'qa');
+  applyAgentProfiles({version:3,profiles:{...defaultAgentProfiles,forge:'code-review'}});
+  await assert.rejects(previews.consume(reviewed.previewId,input),{statusCode:409});
+  await assert.rejects(f.executor.start(task.id,task.version,direct),{statusCode:409});
+  assert.equal(f.calls.length,0);assert.equal((await f.currentTask(task.id)).status,'queued');
+  const fresh=await previews.preview(input);await f.executor.start(task.id,task.version,await previews.consume(fresh.previewId,input));
+  const result=await f.settle(task.id);
+  assert.equal(result.status,'review');assert.equal(f.calls.length,1);
+  assert.deepEqual(result.steps[0].execution.capability,{version:3,catalogVersion:1,profileId:'code-review'});
+  assert.match(f.calls[0].prompt,/SPECIALIZZAZIONE: Revisione codice/);
+  assert.match(f.calls[0].prompt,/Non inventare citazioni, file, righe, test superati/);
+  assert.match(f.calls[0].prompt,/Non hai strumenti web, accesso a repository/);
+});
 
 test('executor produces reviewed versions and a proposed memory while preserving restricted-agent provenance', async t => {
   const f = await fixture(t);

@@ -16,6 +16,8 @@ Owner writes use `POST` and `Content-Type: application/json`. Local mode require
 | `GET /healthz` | Public minimal `{ok:true}` after host/origin checks; `503` when stopping or archive key-check fails |
 | `GET /api/operations` | `{version, projects, tasks, routines, scheduler}` |
 | `GET /api/providers` | Redacted `{version, connections, assignments, policies}`; never API keys |
+| `GET /api/team/capabilities` | Owner-only `{version, profiles}` mapping stable agent IDs to curated specialties |
+| `POST /api/team/capabilities` | `{id, profileId, expectedVersion}`; requires idle execution and returns updated preferences; no AI calls |
 | `GET /api/search?scopeId=…&q=…&kinds=…&offset=0&limit=30` | Local scoped results, provenance, original targets, paging and partial-history indicator |
 | `GET /api/search/original?scopeId=…&sourceScopeId=…&kind=…&id=…&conversationId=…` | Visibility-revalidated saved original, bounded blocks and truncation indicator |
 | `GET /api/budgets` | Daily allowance, project/assignment lifetime limits and usage, defaults and unattributed calls |

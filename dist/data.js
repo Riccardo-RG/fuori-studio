@@ -1,4 +1,5 @@
 import { t } from './i18n.js';
+import {defaultAgentProfiles, findAgentProfile, PROFILE_CATALOG_VERSION} from './agent-profiles.js';
 export const projects = [
  {id:'portfolio',get name(){return t('Tutti i tuoi progetti');},get category(){return t('Tutti gli 8 progetti');},get description(){return t('Scegliere il prossimo esperimento tra prodotti personali, progetti per clienti e lavoro.');},get experiment(){return t('Per ogni progetto, scrivi il prossimo risultato verificabile, un impegno di tempo e gli eventuali vincoli già concordati. Scegli un solo esperimento da portare fino alla verifica.');},get question(){return t('Quale progetto ha oggi un problema preciso, una persona con cui verificarlo e un prossimo passo compatibile con i tuoi impegni?');},get deliverable(){return t('Una decisione motivata sul prossimo esperimento, con le informazioni ancora mancanti.');}},
  {id:'builder',get name(){return t('Generatore di gestionali');},get category(){return t('AI · SOFTWARE B2B');},get description(){return t('Software che crea gestionali a partire dalle esigenze di chi lo usa.');},get experiment(){return t('Genera da un brief una piccola app con clienti, attività e stati. Fai completare un flusso a un potenziale utilizzatore.');},get question(){return t('Riesce a svolgere l’attività e a chiedere una modifica senza il tuo aiuto tecnico?');},get deliverable(){return t('Un flusso dimostrabile e gli ostacoli osservati durante la prova.');}},
@@ -28,4 +29,22 @@ export function applyAgentNames(names) {
     if (!name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)) continue;
     agent.name = name;
   }
+}
+
+let specialtyVersion=1, specialties={...defaultAgentProfiles};
+export function applyAgentProfiles(snapshot) {
+  if(!Number.isSafeInteger(snapshot?.version)||snapshot.version<1||!snapshot.profiles||Object.keys(snapshot.profiles).length!==agents.length||agents.some(agent=>!Object.hasOwn(snapshot.profiles,agent.id)||!findAgentProfile(snapshot.profiles[agent.id])))throw Error('Lo studio ha restituito specializzazioni non valide.');
+  specialties={...snapshot.profiles};specialtyVersion=snapshot.version;
+}
+export function agentCapability(id) {
+  if(!Object.hasOwn(specialties,id))throw Error('Specializzazione o versione non valida.');
+  const profile=findAgentProfile(specialties[id]);
+  return {version:specialtyVersion,catalogVersion:PROFILE_CATALOG_VERSION,profileId:profile.id};
+}
+for(const agent of agents) {
+  const profile=()=>findAgentProfile(specialties[agent.id]);
+  Object.defineProperties(agent,{
+    role:{get:()=>t(profile().title)},description:{get:()=>t(profile().description)},
+    skills:{get:()=>profile().skills.map(value=>t(value))},task:{get:()=>t(profile().deliverable)},
+  });
 }

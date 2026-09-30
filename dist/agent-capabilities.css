@@ -1,0 +1,10 @@
+.agent-capability-editor{margin-top:22px;padding-top:20px;border-top:1px solid var(--edge,#dde5d1);display:grid;gap:10px}
+.agent-capability-editor>label{font-weight:650;font-size:14px}
+.agent-capability-editor p{font-size:12px;line-height:1.65;color:var(--muted,#71835e);margin:0}
+.agent-capability-editor select{width:100%;padding:12px;border:1px solid var(--edge-strong,#c9d8b7);border-radius:9px;background:var(--field,#fff);color:var(--text,#345338);font:inherit;font-size:14px}
+.agent-specialty-preview{padding:13px 15px;background:var(--surface-soft,#edf2e3);border:1px solid var(--edge,#dde5d1);border-radius:9px}
+.agent-specialty-preview strong{display:block;font-size:11px;letter-spacing:.04em;margin-top:12px;margin-bottom:4px;color:var(--text,#345338)}
+.agent-specialty-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.agent-capability-editor [role=alert]{color:var(--danger,#b34835)}
+.agent-capability-editor :focus-visible{outline:2px solid var(--green,#598444);outline-offset:3px}
+@media(max-width:600px){.agent-capability-editor select{font-size:16px}.agent-specialty-actions{display:grid}.agent-specialty-actions .button{justify-content:center;min-height:42px}}

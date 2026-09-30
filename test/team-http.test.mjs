@@ -74,10 +74,22 @@ test('team names require owner access and CSRF, reject stale edits, and persist 
   await request('/api/team', { owner: true, payload: { id: 'forge', name: 'RESEARCH PARTNER', expectedVersion: 2 }, status: 400 });
   await request('/api/team', { owner: true, payload: { id: 'forge', name: 'Developer', expectedVersion: 2, role: 'leader' }, status: 400 });
   assert.deepEqual(await request('/api/team', { owner: true }), renamed);
+  await request('/api/team/capabilities',{status:401});
+  const capabilities=await request('/api/team/capabilities',{owner:true});
+  assert.equal(capabilities.version,1);assert.equal(capabilities.profiles.forge,'engineering');
+  const assignment={id:'forge',profileId:'code-review',expectedVersion:1};
+  await request('/api/team/capabilities',{payload:assignment,status:401});
+  await request('/api/team/capabilities',{payload:assignment,headers:{Authorization:`Bearer ${device.token}`},status:401});
+  await request('/api/team/capabilities',{owner:true,payload:assignment,headers:{'X-CSRF-Token':'wrong'},status:403});
+  const assigned=await request('/api/team/capabilities',{owner:true,payload:assignment});
+  assert.equal(assigned.version,2);assert.equal(assigned.profiles.forge,'code-review');
+  await request('/api/team/capabilities',{owner:true,payload:assignment,status:409});
+  await request('/api/team/capabilities',{owner:true,payload:{...assignment,expectedVersion:2,permissions:['shell']},status:400});
+  assert.deepEqual(await request('/api/team',{owner:true}),renamed,'specialty changes do not mutate names');
   const governance = await request('/api/governance', { owner: true }); assert.equal(governance.daily.calls, 0);
   for (const secret of [key, sessionToken, csrf, device.token, 'fixture-secret']) assert.equal(JSON.stringify(renamed).includes(secret), false);
   await stop();
   const persisted = createArchive({ directory, masterKey: key, mode: 'hybrid' });
-  try { assert.deepEqual(await persisted.read('team-profiles'), { schemaVersion: 1, version: 2, names: renamed.names }); }
+  try { assert.deepEqual(await persisted.read('team-profiles'), { schemaVersion: 1, version: 2, names: renamed.names });assert.deepEqual(await persisted.read('agent-capabilities'),{schemaVersion:1,...assigned}); }
   finally { await persisted.close(); }
 });

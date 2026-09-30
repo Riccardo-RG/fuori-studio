@@ -8,6 +8,8 @@ import { createOperationsStore } from '../lib/operations.mjs';
 import { createTaskExecutor } from '../lib/executor.mjs';
 import { createPlanService } from '../lib/plans.ts';
 import { configureSourceContext } from '../lib/context.mjs';
+import {applyAgentProfiles} from '../dist/data.js';
+import {defaultAgentProfiles} from '../dist/agent-profiles.js';
 
 const nodes = [{ key: 'prepare', title: 'Prepare milestone', brief: 'Prepare a measurable milestone.', agentId: 'forge', dependsOn: [] }, { key: 'review', title: 'Review milestone', brief: 'Review the measurable milestone.', agentId: 'forge', dependsOn: ['prepare'] }];
 async function fixture(t) {
@@ -98,4 +100,14 @@ test('failed plan preflight restores the same reviewable draft without duplicate
   assert.deepEqual(graph.tasks.map(task => task.title), nodes.map(node => node.title));
   await assert.rejects(f.plans.commit({ id: draft.id }), /scaduta o già utilizzata/);
   assert.equal((await f.operations.getSnapshot()).tasks.length, 2); assert.equal(f.calls.length, 1);
+});
+
+test('changing a specialty invalidates an uncommitted plan without creating tasks or making extra calls',async t=>{
+  const f=await fixture(t);t.after(()=>applyAgentProfiles({version:1,profiles:defaultAgentProfiles}));
+  const draft=await f.draft();
+  applyAgentProfiles({version:2,profiles:{...defaultAgentProfiles,radar:'qa'}});
+  await assert.rejects(f.plans.commit({id:draft.id}),{statusCode:409});
+  assert.equal(f.calls.length,1);assert.equal((await f.operations.getSnapshot()).tasks.length,0);
+  const next=await f.draft();assert.match(f.calls[1].prompt,/Qualità & test/);
+  const graph=await f.plans.commit({id:next.id});assert.equal(graph.tasks.length,2);assert.equal(f.calls.length,2);
 });
