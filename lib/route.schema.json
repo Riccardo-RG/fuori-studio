@@ -5,20 +5,6 @@
     "message": {
       "type": "string"
     },
-    "projectId": {
-      "type": "string",
-      "enum": [
-        "portfolio",
-        "builder",
-        "avatar",
-        "necklace",
-        "horeca",
-        "group",
-        "roblox",
-        "tourism",
-        "trainer"
-      ]
-    },
     "needsInput": {
       "type": "boolean"
     },
@@ -85,7 +71,6 @@
   },
   "required": [
     "message",
-    "projectId",
     "needsInput",
     "assignments",
     "memoryCandidates"

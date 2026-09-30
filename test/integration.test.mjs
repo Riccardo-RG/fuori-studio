@@ -16,7 +16,7 @@ const fs = require('fs');
 if(process.argv.includes('login')){console.log('Logged in using ChatGPT');process.exit(0);}
 let prompt='';process.stdin.on('data',d=>prompt+=d);process.stdin.on('end',()=>{
 fs.appendFileSync(process.env.TEST_PROMPTS,JSON.stringify({prompt})+'\\n');
-const text=process.argv.includes('--output-schema')?JSON.stringify({message:'Risposta di prova del coordinatore.',projectId:'portfolio',needsInput:false,assignments:[{agentId:'forge',task:'Prepara una proposta.'}]}):'Risposta di prova dello specialista.';
+const text=process.argv.includes('--output-schema')?JSON.stringify({message:'Risposta di prova del coordinatore.',needsInput:false,assignments:[{agentId:'forge',task:'Prepara una proposta.'}]}):'Risposta di prova dello specialista.';
 setTimeout(()=>console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text}})),120);
 });
 `, { mode: 0o700 });
@@ -53,6 +53,7 @@ setTimeout(()=>console.log(JSON.stringify({type:'item.completed',item:{type:'age
   const first = await chat('business');
   await mutate('saveMemory', note('business', 'CONCURRENT'), 409);
   assert.match(await first.text(), /Risposta di prova dello specialista/);
+  assert.equal((await request('/api/studio')).projectId, null, 'a conversation without a reviewed project must not acquire a demo project');
   let captured = (await readFile(prompts, 'utf8')).trim().split('\n').map(line => JSON.parse(line).prompt);
   assert.equal(captured.length, 2);
   assert.ok(captured.every(p => p.includes('BUSINESS_FACT') && !p.includes('PERSONAL_SECRET') && !p.includes('UNCONFIRMED')));

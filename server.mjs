@@ -4,6 +4,7 @@ import { createExecutionPreview } from './lib/execution-preview.ts';
 import { createStudioSearch } from './lib/studio-search.ts';
 import { prepareWorkflowTask } from './lib/workflow-inputs.mjs';
 import { createWorkflowLearning } from './lib/workflow-learning.ts';
+import { createConversationTasks } from './lib/conversation-tasks.ts';
 import { createTeamStore } from './lib/team.ts';
 import { applyAgentNames, applyAgentProfiles } from './dist/data.js';
 import { createAgentCapabilitiesStore } from './lib/agent-capabilities.ts';
@@ -67,6 +68,7 @@ const repositoryWork = createRepositoryWork({
 });
 const github = createGitHub({ storage: defaultArchive, workspace: workspaceStore, approvedRun: input => repositoryWork.approvedPublication(input) });
 const workflowLearning = createWorkflowLearning({operations:operationsStore,workspace:workspaceStore});
+const conversationTasks = createConversationTasks({operations:operationsStore,workspace:workspaceStore,conversations});
 const team = createTeamStore({storage:defaultArchive});
 const agentCapabilities = createAgentCapabilitiesStore({storage:defaultArchive});
 const evaluations = createMemoryEvaluations({ storage: defaultArchive, workspace: workspaceStore });
@@ -379,6 +381,8 @@ const server = createServer(async (req, res) => {
         }
         if (pathname === '/api/sync') { await requireIdle(); json(res, 200, await sync.mutate(payload.action, payload.payload)); return; }
         if (pathname === '/api/conversation/new') { await requireIdle(); json(res, 200, await newConversation()); return; }
+        if (pathname === '/api/conversation/task-preview') { await requireIdle(); json(res, 200, await conversationTasks.preview(payload)); return; }
+        if (pathname === '/api/conversation/task') { await requireIdle(); json(res, 200, await conversationTasks.create(payload)); return; }
         if (pathname === '/api/conversation/scope') { await requireIdle(); json(res, 200, await selectScope(payload.scopeId)); return; }
         if (pathname === '/api/workspace') { await requireIdle(); json(res, 200, await workspaceStore.mutate(payload.action, payload.payload)); return; }
         if (pathname === '/api/operations') { json(res, 200, await operationsMutation(payload.action, payload.payload)); return; }

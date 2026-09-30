@@ -77,6 +77,12 @@ export function createSearchPanel({ onOpenOriginal = null } = {}) {
     selectedScope = value.scopeId || context.scopeId; query = value.query ?? query; original = null; error = ''; data = null;
     returnFocus = document.activeElement; render(); if (!dialog.open) dialog.showModal(); dialog.querySelector('input')?.focus(); if (query.trim()) void search();
   }
+  async function openOriginal({scopeId,conversationId,messageId}) {
+    if (document.querySelector('dialog[open]') && !dialog.open) return;
+    selectedScope = scopeId; query = ''; original = null; error = ''; data = null;
+    returnFocus = document.activeElement; render(); if (!dialog.open) dialog.showModal();
+    await showOriginal({scopeId,kind:'conversation',target:{id:messageId,conversationId}});
+  }
   dialog.addEventListener('submit', event => { event.preventDefault(); query = dialog.querySelector('[name=query]').value; void search(); });
   dialog.addEventListener('input', event => { if (event.target.name !== 'query') return; query = event.target.value; controller?.abort(); revision++; clearTimeout(timer); timer = setTimeout(() => void search(), 300); });
   dialog.addEventListener('change', event => { if (event.target.name === 'scopeId') selectedScope = event.target.value; else if (event.target.name === 'kind') selectedKind = event.target.value; else return; void search(); });
@@ -100,5 +106,5 @@ export function createSearchPanel({ onOpenOriginal = null } = {}) {
   const expire = () => { close(); data = null; original = null; query = ''; dialog.replaceChildren(); };
   document.addEventListener('keydown', keyboard); window.addEventListener('studio-session-expired', expire);
   const stopLanguage = onLanguageChange(() => { if (dialog.open) render(); });
-  return { open, close, setContext(value) { context = { ...context, ...value }; if (dialog.open && value.scopeId && selectedScope !== '*' && selectedScope !== value.scopeId) { selectedScope = value.scopeId; original = null; void search(); } }, dispose() { disposed = true; close(); stopLanguage(); document.removeEventListener('keydown', keyboard); window.removeEventListener('studio-session-expired', expire); dialog.remove(); } };
+  return { open, openOriginal, close, setContext(value) { context = { ...context, ...value }; if (dialog.open && value.scopeId && selectedScope !== '*' && selectedScope !== value.scopeId) { selectedScope = value.scopeId; original = null; void search(); } }, dispose() { disposed = true; close(); stopLanguage(); document.removeEventListener('keydown', keyboard); window.removeEventListener('studio-session-expired', expire); dialog.remove(); } };
 }

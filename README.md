@@ -40,6 +40,7 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Memory maintenance | Conservative duplicate groups and 90-day review hints, with provenance and explicit existing editors |
 | Decision inbox | Text deliveries and repository patches waiting for review, plus interrupted/failed work |
 | Quick actions | Scope-aware task/memory shortcuts and a searchable Command/Control K menu |
+| Conversation assignments | Turn a saved message into an editable queued assignment on an owned project, preserving source permissions and duplicate-safe save receipts |
 | Studio search | Local search across current/archived conversations, memories, documents, workflows, tasks, deliveries and repository runs, with scoped results and saved originals |
 | Execution preview | Per-role context, history and service review before explicit starts; exclusions, expiring receipts and revalidation without AI calls |
 | Memory | Source-linked suggestions, review inbox, per-scope learning policies, conflicts, undo and deletion suppression |

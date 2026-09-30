@@ -56,7 +56,9 @@ let prompt='';process.stdin.on('data',value=>prompt+=value);process.stdin.on('en
 
 test('HTTP context previews bind chat permissions, exclusions, original workflow values and task execution without extra inference', { timeout: 20000 }, async t => {
   const f = await fixture(t);
-  const project = (await f.operations('createProject', { title: 'Context preview project', scopeId: 'business' })).projects.at(-1);
+  const project = (await f.operations('createProject', { title: 'Context preview project', description: 'USER_SELECTED_PROJECT_MARKER', scopeId: 'business' })).projects.at(-1);
+  const unrelated = (await f.operations('createProject', { title: 'Unrelated personal product', description: 'OTHER_PROJECT_SECRET_MARKER', scopeId: 'personal' })).projects.at(-1);
+  await f.preview({ message: 'Check the selected project.', projectId: unrelated.id }, 400);
   let memory = (await f.workspace('saveMemory', { scopeId: 'business', type: 'fact', title: 'Boundary specification review', content: 'Boundary specification review MEMORY_EXCLUSION_MARKER.', status: 'confirmed', source: 'User fixture', sharedWith: [], agentIds: [] })).memories.at(-1);
   const source = (await f.request('/api/sources', { action: 'importText', payload: { scopeId: 'business', title: 'Boundary specification review', text: 'Boundary specification review SOURCE_EXCLUSION_MARKER supplied requirements.' } })).source;
   const message = 'Review the boundary specification and recommend the next step.';
@@ -95,6 +97,10 @@ test('HTTP context previews bind chat permissions, exclusions, original workflow
   assert.equal((await f.calls()).length, 1);
   await f.chat(input, leaderOnly, 409);
   const studio = await f.request('/api/studio'), originalAnswer = studio.messages.find(item => item.text.includes('DERIVED_HISTORY_MARKER'));
+  assert.equal(studio.projectId, project.id, 'model-supplied demo routing must never override the reviewed real project');
+  assert.equal(firstEvents.find(event => event.type === 'context').projectId, project.id);
+  assert.match((await f.calls())[0].prompt, /USER_SELECTED_PROJECT_MARKER/);
+  assert.doesNotMatch((await f.calls())[0].prompt, /OTHER_PROJECT_SECRET_MARKER|usa portfolio/);
   assert.ok(originalAnswer.context.memories.some(item => item.id === memory.id));
   assert.ok(originalAnswer.context.sources.some(item => item.id === source.id));
 
@@ -111,6 +117,7 @@ test('HTTP context previews bind chat permissions, exclusions, original workflow
   const events = await f.chat(followup, reviewed);
   assert.deepEqual(events.filter(event => event.type === 'message' && event.message.role === 'assistant').map(event => event.message.agentId), ['nova', 'forge']);
   let calls = await f.calls(); assert.equal(calls.length, 3); assert.deepEqual(calls.map(call => call.router), [true, true, false]);
+  assert.ok(calls.every(call => call.prompt.includes('USER_SELECTED_PROJECT_MARKER')), 'every participating agent receives the reviewed project');
   for (const call of calls.slice(1)) assert.doesNotMatch(call.prompt, /MEMORY_EXCLUSION_MARKER|SOURCE_EXCLUSION_MARKER|DERIVED_HISTORY_MARKER/);
 
   const workflow = (await f.workspace('saveWorkflow', { scopeId: 'business', title: 'Structured fields without placeholders', input: 'Read the supplied case.', output: 'A concrete decision note.', status: 'ready', steps: [{ title: 'Assess', agentId: 'nova', output: 'Evaluate the available evidence.' }], inputFields: [{ key: 'objective', label: 'Objective', required: true, defaultValue: '' }, { key: 'deliverable', label: 'Deliverable', required: true, defaultValue: '' }] })).workflows.at(-1);
