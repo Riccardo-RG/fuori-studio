@@ -36,6 +36,8 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Owned projects | Real project records with scoped tasks; optional client classification |
 | Durable assignments | Ordered steps, single active task, saved outputs, pause/resume, restart after invalidated context |
 | Deliverables | Versioned text, explicit approval or revision requests, Markdown export |
+| Today | Scope/project action queue, dependency approvals, saved progress, interrupted work and upcoming routines; read-only and no AI calls |
+| Memory maintenance | Conservative duplicate groups and 90-day review hints, with provenance and explicit existing editors |
 | Decision inbox | Text deliveries and repository patches waiting for review, plus interrupted/failed work |
 | Quick actions | Scope-aware task/memory shortcuts and a searchable Command/Control K menu |
 | Studio search | Local search across current/archived conversations, memories, documents, workflows, tasks, deliveries and repository runs, with scoped results and saved originals |
@@ -59,7 +61,7 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Sources | Scoped documents/PDF text, URL snapshots, public GitHub and allowed local folders; source versions and expiry |
 | Web research | Explicit OpenAI Responses web search, domain filters, clickable citations and recorded provenance |
 | Plans | Coordinator proposal, reviewed dependency graph, approved predecessor deliveries before execution |
-| Outcomes | Accepted/revised deliveries, actual execution cycles, reported tokens and separately labeled user feedback |
+| Outcomes | Scoped project/procedure comparisons from the full retained call ledger, reviewed deliveries and explicit usefulness feedback; missing feedback and self-reported savings remain visible |
 | Office | Four living dioramas, local-time day/night, fires, interactive workstations, collaboration area and immersive work panels |
 
 The team is **Riccardo** (AI leader), **Raffaele** (research), **Big Fonz** (product/development), **D’albenzio** (content), and **Cicciolina** (business). Riccardo the AI character is distinct from the human user.
@@ -115,6 +117,8 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 
 - [Product direction and boundaries](PRODUCT.md)
 - [Operating the studio](docs/USER_GUIDE.md)
+- [Daily action queue and recovery](docs/TODAY.md)
+- [Reviewing memory quality](docs/MEMORY_REVIEW.md)
 - [Local search and saved originals](docs/SEARCH.md)
 - [Reviewing context before execution](docs/EXECUTION_PREVIEW.md)
 - [Reusable workflow fields](docs/WORKFLOW_FIELDS.md)

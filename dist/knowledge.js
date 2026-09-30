@@ -3,6 +3,7 @@ import { agents } from './data.js';
 import { scopeIdentity } from './experience-state.js';
 import { icon } from './studio-icons.js';
 import { createEvaluationsPanel } from './evaluations.js';
+import { createMemoryReviewPanel } from './memory-review.js';
 import { workflowFieldEditorHTML, readWorkflowFieldEditor, workflowInputFormHTML, readWorkflowInputValues } from './workflow-fields.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -23,7 +24,7 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
     <div class="knowledge-heading"><div><div class="eyebrow">IL FILO DEL TUO LAVORO</div><h2 id="knowledge-title">La memoria dello studio.</h2><p>Contesti distinti. Collegamenti scelti da te.</p></div><button type="button" class="knowledge-button" data-action="new-scope" disabled>＋ Nuovo ambito</button></div>
     <div class="knowledge-toolbar"><div class="knowledge-scope-field"><label for="knowledge-scope">Ambito attivo · lo stesso della chat</label><select id="knowledge-scope" disabled><option>Caricamento…</option></select></div><p class="knowledge-scope-note" id="knowledge-scope-note">Le informazioni rimangono nel loro ambito. Puoi rendere disponibili singole note anche altrove.</p></div>
     <section id="memory-assistant" class="memory-assistant" aria-label="Memoria assistita" hidden></section>
-    <div class="memory-transfer-tools"><span>Il tuo archivio</span><button type="button" class="knowledge-text-button" data-action="memory-export">Esporta</button><button type="button" class="knowledge-text-button" data-action="memory-import">Importa</button><button type="button" class="knowledge-text-button" data-action="memory-evaluate" aria-expanded="false" aria-controls="memory-evaluations">Valuta memoria</button></div>
+    <div class="memory-transfer-tools"><span>Il tuo archivio</span><button type="button" class="knowledge-text-button" data-action="memory-export">Esporta</button><button type="button" class="knowledge-text-button" data-action="memory-import">Importa</button><button type="button" class="knowledge-text-button" data-action="memory-review" aria-expanded="false" aria-controls="memory-review">Rivedi memoria</button><button type="button" class="knowledge-text-button" data-action="memory-evaluate" aria-expanded="false" aria-controls="memory-evaluations">Valuta memoria</button></div>
     <div class="knowledge-controls"><div class="knowledge-tabs" role="tablist" aria-label="Archivio dello studio"><button id="knowledge-tab-memories" type="button" role="tab" aria-selected="true" aria-controls="knowledge-results" data-tab="memories">Memoria <span data-count="memories">0</span></button><button id="knowledge-tab-workflows" type="button" role="tab" aria-selected="false" aria-controls="knowledge-results" tabindex="-1" data-tab="workflows">Procedure <span data-count="workflows">0</span></button></div><div class="knowledge-list-actions"><label class="visually-hidden" for="knowledge-search">Cerca nell’ambito attivo</label><input id="knowledge-search" type="search" placeholder="Cerca in questo ambito…" autocomplete="off" maxlength="200"><button type="button" class="knowledge-button is-primary" data-action="new-entry" disabled>＋ Nuova memoria</button></div></div>
     <div id="knowledge-feedback" class="knowledge-feedback" role="status" aria-live="polite">Caricamento della memoria…</div>
     <div id="knowledge-results" class="knowledge-results" role="tabpanel" aria-labelledby="knowledge-tab-memories" tabindex="0"></div>
@@ -34,6 +35,7 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
   bindTranslations(panel);
 
   const evaluationHost=document.createElement('section');evaluationHost.id='memory-evaluations';evaluationHost.className='evaluations-panel';evaluationHost.hidden=true;evaluationHost.setAttribute('aria-label',t('Valutazione della memoria'));panel.querySelector('.memory-transfer-tools').after(evaluationHost);
+  const reviewHost=document.createElement('section');reviewHost.id='memory-review';reviewHost.className='memory-review-panel';reviewHost.hidden=true;reviewHost.setAttribute('aria-label',t('Revisione della memoria'));evaluationHost.after(reviewHost);
 
   const chatScope = document.createElement('div');
   chatScope.className = 'knowledge-chat-scope';
@@ -59,6 +61,15 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
   const scopeOptions = (selected, scopes = snapshot.scopes) => scopes.map(scope => ui`<option value="${escape(scope.id)}"${scope.id === selected ? ' selected' : ''}>${escape(scope.name)}${scope.parentId ? ` · ${escape(scopeName(scope.parentId))}` : ''}</option>`).join('');
 
   const evaluations=createEvaluationsPanel({host:evaluationHost,toast,onVisibility:value=>panel.querySelector('[data-action="memory-evaluate"]').setAttribute('aria-expanded',String(value))});
+  const memoryReview=createMemoryReviewPanel({host:reviewHost,toast,onVisibility:value=>{const button=panel.querySelector('[data-action="memory-review"]');button.setAttribute('aria-expanded',String(value));if(!value)button.focus();},onOpenMemory:async ref=>{
+    if(locked()||currentScope!==ref.scopeId)return;
+    await load();
+    if(locked()||currentScope!==ref.scopeId)return;
+    const item=snapshot.memories.find(item=>item.id===ref.id&&item.scopeId===ref.scopeId);
+    if(!item){toast(t('La memoria non è più disponibile. Aggiorna l’archivio.'));return;}
+    if(item.version!==ref.version)toast(t('La memoria è cambiata. L’editor mostra la versione attuale.'));
+    openMemory(item);
+  }});
   window.addEventListener('studio-edit-memory',event=>{if(locked())return;const item=snapshot.memories.find(item=>item.id===event.detail?.id);if(item)openMemory(item);else toast(t('La memoria non è più disponibile. Aggiorna l’archivio.'));});
 
   function setSnapshot(value) {
@@ -82,6 +93,7 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
   function syncControls() {
     const disabled = locked();
     evaluations.setBusy(disabled);
+    memoryReview.setBusy(disabled);
     panel.querySelectorAll('[data-action]').forEach(button => { button.disabled = (disabled && button.dataset.action !== 'retry') || button.dataset.readonly === 'true'; });
     $('#knowledge-scope').disabled = disabled;
     chatScope.querySelector('select').disabled = disabled;
@@ -123,6 +135,7 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
   function render() {
     renderAssistant();
     evaluations.setContext({scopeId:currentScope,scopes:snapshot.scopes,memories:snapshot.memories});
+    memoryReview.setContext({scopeId:currentScope,scopes:snapshot.scopes,memories:snapshot.memories});
     panel.querySelectorAll('[data-tab]').forEach(button => {
       const selected = button.dataset.tab === activeTab;
       button.setAttribute('aria-selected', String(selected));
@@ -511,6 +524,7 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
     if(action==='memory-export'){openMemoryExport();return;}
     if(action==='memory-import'){openMemoryImport();return;}
     if(action==='memory-evaluate'){evaluations.toggle();return;}
+    if(action==='memory-review'){memoryReview.toggle();return;}
     if(action==='memory-policy'){openMemoryPolicy();return;}
     if(action==='candidate-review'||action==='candidate-reject'){const candidate=snapshot.memoryAssistant?.candidates?.find(item=>item.id===button.dataset.id);if(candidate){if(action==='candidate-review')openCandidate(candidate);else void rejectCandidate(candidate);}return;}
     if(action==='memory-undo'){const actionRecord=snapshot.memoryAssistant?.actions?.find(item=>item.id===button.dataset.id);if(actionRecord)undoMemory(actionRecord);return;}
@@ -552,5 +566,5 @@ export function createKnowledgePanel({onCreateTask = () => {}, onScopeChange, on
     }catch(error){toast(error.message);}
     finally{switching=false;syncControls();}
   }
-  return { load, setScope, fromApproved, getWorkflow(id) { return snapshot.workflows.find(item => item.id === id); },async openEntry(tab,id){await load();if(locked())return false;activeTab=tab;const item=snapshot[tab]?.find(item=>item.id===id);if(!item)return false;render();if(tab==='workflows')openWorkflow(item);else openMemory(item);return true;}, newMemory(){if(!locked())openMemory();}, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
+  return { load, setScope, fromApproved, getWorkflow(id) { return snapshot.workflows.find(item => item.id === id); },async openEntry(tab,id){await load();if(locked())return false;activeTab=tab;const item=snapshot[tab]?.find(item=>item.id===id);if(!item)return false;render();if(tab==='workflows')openWorkflow(item);else openMemory(item);return true;}, openReview(){activeTab='memories';render();memoryReview.open();reviewHost.scrollIntoView({block:'start',behavior:'smooth'});}, newMemory(){if(!locked())openMemory();}, openSection(tab) { activeTab = tab === 'workflows' ? 'workflows' : 'memories'; render(); }, setBusy(value) { busy = Boolean(value); syncControls(); }, captureMessage };
 }

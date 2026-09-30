@@ -35,6 +35,14 @@ The scheduler must check available budget before claiming work, honor provider a
 
 ## Outcome metrics
 
+The Results panel also compares retained history **by project** and **by procedure**, using the selected scope or all scopes. The installation-wide overview and daily allowance remain explicitly global. A shared procedure is attributed to the scope of each actual assignment, not the procedure's home scope.
+
+Each comparison separates individual approved/revised delivery versions, assignment counts, all recorded AI attempts, and the latest explicit usefulness assessment for each currently approved assignment or patch. It shows how many approved results still need feedback. Missing feedback is not negative feedback; omitted minutes remain unknown, while an explicit zero remains zero. A project includes its repository runs and project planning calls. Procedure calls require a matching task, project and scope; unattributable calls are counted separately instead of being guessed. No monetary return or automatically estimated savings are calculated.
+
+`governance.snapshot({operations, repositoryState, workflows, scopeId?})` adds `insights` with `projects`, `procedures`, a `retained_history` period and attribution coverage. Its calculations use the full retained governance ledger, not the recent 200-item UI lists. The comparison is read-only and starts no AI calls. Scope changes discard late responses for the previously selected scope.
+
+Historical calls retain their original scope after a project move, but cannot borrow the project's title from another scope. Procedure titles require current ownership or explicit sharing (including the shared scope); otherwise comparisons use the durable ID. Current task/run references with missing or mismatched project ownership are excluded from assignment and feedback joins.
+
 `aggregateOperations(operations, repositoryState)` is a pure calculation over saved task artifacts, repository decisions, execution metadata and events:
 
 - **Deliveries:** artifacts submitted for human review, with accepted, revised and pending counts.

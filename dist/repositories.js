@@ -83,7 +83,7 @@ export function createRepositoriesPanel({onPreview=async()=>null,host,toast=()=>
     dialog.querySelector('form').addEventListener('submit',async event=>{
       event.preventDefault();if(locked())return;const el=event.currentTarget;if(!el.reportValidity())return;const data=new FormData(el),box=dialog.querySelector('.ops-form-error');box.hidden=true;saving=true;syncLocks();
       try{const after=await submit(data,el);dialog.close();saving=false;syncLocks();if(after)after();}
-      catch(e){box.textContent=e.status===409?ui`${e.message} Chiudi il modulo e aggiorna l’incarico prima di riprovare.`:e.message;box.hidden=false;box.scrollIntoView({block:'nearest'});}
+      catch(e){if(disposed)return;box.textContent=e.status===409?ui`${e.message} Chiudi il modulo e aggiorna l’incarico prima di riprovare.`:e.message;box.hidden=false;if(!dialog.open)dialog.showModal();box.scrollIntoView({block:'nearest'});}
       finally{saving=false;syncLocks();schedule();}
     });
   }

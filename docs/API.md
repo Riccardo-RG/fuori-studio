@@ -212,7 +212,7 @@ At most twenty proposals can await review; the limit is checked before a coordin
 
 ## Limits and outcomes
 
-`GET /api/governance` returns settings, UTC period/reset, daily allowances, recorded usage, user feedback and `metrics` derived from actual task/repository records.
+`GET /api/governance?scopeId=...` returns settings, UTC period/reset, daily allowances, recorded usage, user feedback, `metrics` derived from actual task/repository records, and `insights` for project/procedure comparisons. The optional validated scope filters only `insights`; existing installation counters remain explicitly global. Omit it to compare all scopes. Insights aggregate the full retained ledger, not the last 200 display records. See [governance](GOVERNANCE.md).
 
 `POST /api/governance {action:"configure",payload:{expectedVersion,dailyCallLimit,maxCallSeconds,autonomousRoutines,maxAutonomousRunsPerDay}}` saves limits while idle. Enabling autonomy establishes a server-side opt-in timestamp. Only enabled routine tasks created after that timestamp can start automatically.
 
@@ -273,3 +273,11 @@ feedback   { memoryId, memoryVersion, expectedVersion?, helpful, note? }
 ```
 
 Case mutations return the scoped evaluation snapshot. Feedback returns `{saved:true}`; refresh the GET endpoint afterwards. Positive labels must be confirmed and accessible for the selected scope/agent. Negative labels may identify owner-visible notes from other scopes without copying their contents into the evaluated context. Changed labels produce `needs-review`; historical results are excluded from current aggregates. Removing a case removes its run history. See [measurement definitions](MEMORY_EVALUATION.md).
+
+
+## Daily action queue and memory maintenance
+
+- `GET /api/today?scopeId=business&projectId=...` returns `generatedAt`, selected scope/project, available projects, counts and groups (`review`, `interrupted`, `running`, `ready`, `waiting`), upcoming routines and a stale-source count. Scope is required; `*` explicitly selects all scopes. Optional `projectId` must belong to a displayed scope. Groups retain full counts but display at most 12 items each; routine preview displays at most 8. Each item points to its existing task or repository detail; no route here starts or changes work. `ready` means queued with approved task dependencies, not a guarantee that provider, context or budget preflight will pass. See [Today](TODAY.md).
+- `GET /api/memory/review?scopeId=business` returns a read-only review of notes owned by exactly that active scope: `summary`, conservative `duplicates`, and confirmed `aging` notes not updated for at least 90 days. It excludes linked notes owned elsewhere, uses no AI and makes no merge/delete/status changes. Missing or malformed scope is 400; unknown/archive scope is 403. See [memory review](MEMORY_REVIEW.md).
+
+Both endpoints use the existing owner/session, host and origin boundary. They do not accept mutations, contact providers or change call usage.

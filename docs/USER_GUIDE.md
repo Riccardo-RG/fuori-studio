@@ -147,3 +147,14 @@ Use **Memoria → Valuta memoria** to save real questions with expected and excl
 Use **Accesso → Preparazione** to distinguish configured services from verified evidence, check archive integrity, create a verified backup and download its encrypted file. Keep the key separately and follow [the recovery guide](DEPLOYMENT_RECOVERY.md) for a restore drill. This panel does not publish the installation automatically.
 
 **Risultati** shows accepted and revised deliveries, recorded cycle durations and available token counts. Feedback and minutes saved are your own estimates and are labeled separately. **Routine** contains daily AI-call limits and optional autonomous execution. Autonomy is off initially and requires an explicit save; it does not wake a stopped server. See [limits and outcomes](GOVERNANCE.md).
+
+
+## Pick up daily work
+
+Open **Today / Oggi** from the quick bar or work tabs. Choose the current scope (the default), explicitly all scopes, or one project. Review deliveries that unblock other assignments, interrupted work with saved step counts, active jobs, queued work and unmet dependencies. Open a dependency directly to review its delivery. The routine window covers the next 24 hours and overdue schedule entries; it does not invent due dates for assignments. See [Today](TODAY.md).
+
+Use **Review memory** to compare identical content and reread confirmed notes that have not changed for at least 90 days. Age is a prompt to review, not proof of inaccuracy. Every correction opens the existing memory editor; nothing is merged or deleted automatically.
+
+In **Results**, compare projects or procedures within the selected scope or explicitly all scopes. Calls include failed attempts; usefulness comes only from your recorded feedback. Missing assessments and optional self-reported minutes remain separate.
+
+When a preview is blocked by a call limit, it identifies the actual daily/project/assignment ceiling and links to the appropriate settings. Daily limits show their server-provided UTC reset time. Returning to the same start retains that preview's choices; ordinary cancellation clears the temporary draft. Repository start failures remain visible in the reopened dialog, and keyboard tab navigation includes Budget and Today.

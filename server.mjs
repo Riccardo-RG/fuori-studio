@@ -1,3 +1,5 @@
+import {createTodayService} from './lib/today.ts';
+import {createMemoryReview} from './lib/memory-review.ts';
 import { createExecutionPreview } from './lib/execution-preview.ts';
 import { createStudioSearch } from './lib/studio-search.ts';
 import { prepareWorkflowTask } from './lib/workflow-inputs.mjs';
@@ -73,6 +75,8 @@ const sources = createSourceStore({
   github: input => github.readFile(input),
 });
 configureSourceContext(sources);
+const today=createTodayService({workspace:workspaceStore,operations:operationsStore,repositories:repositoryWork,sources});
+const memoryReview=createMemoryReview({workspace:workspaceStore});
 const studioSearch=createStudioSearch({workspace:workspaceStore,conversations,sources,operations:operationsStore,repositories:repositoryWork});
 const executionPreviews=createExecutionPreview({
   prepare:{plan:input=>plans.preview(input),task:input=>taskExecutor.preview(input.id,input.expectedVersion,input.selection),repository:({id,expectedVersion,selection})=>repositoryWork.preview({id,expectedVersion,selection}),chat:input=>previewChat(input)},
@@ -163,8 +167,10 @@ async function effectiveProviderStatus() {
     return providerStatus();
   } catch(error) { return {ready:false,provider:'Servizi AI',reason:error.message}; }
 }
-async function governanceSnapshot() {
-  return { ...await governance.snapshot(), metrics: aggregateOperations(await operationsStore.getSnapshot(), await repositoryWork.snapshot()) };
+async function governanceSnapshot(scopeId) {
+  const [operations,repositoryState,workspace]=await Promise.all([operationsStore.getSnapshot(),repositoryWork.snapshot(),workspaceStore.getSnapshot()]);
+  if(scopeId!==undefined&&!workspace.scopes.some(scope=>scope.id===scopeId))throw fail('Ambito non trovato.',404);
+  return {...await governance.snapshot({operations,repositoryState,workflows:workspace.workflows,scopeId}),metrics:aggregateOperations(operations,repositoryState)};
 }
 async function setupSnapshot(req) {
   return deploymentSnapshot({ storage: defaultArchive.info(), authenticated: Boolean(await identity.getSession(req)), workers: (await repositoryDevices.catalog()).workers, maintenance: await maintenance.snapshot() });
@@ -217,6 +223,8 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       const session = await identity.getSession(req);
       if (!session) throw fail('Accedi per continuare.', 401);
+      if(req.method==='GET'&&pathname==='/api/today'){json(res,200,await today.snapshot({scopeId:url.searchParams.get('scopeId'),projectId:url.searchParams.get('projectId')}));return;}
+      if(req.method==='GET'&&pathname==='/api/memory/review'){json(res,200,await memoryReview.snapshot({scopeId:url.searchParams.get('scopeId')}));return;}
       if(req.method==='GET'&&pathname==='/api/search'){json(res,200,await studioSearch.search({scopeId:url.searchParams.get('scopeId'),query:url.searchParams.get('q')||'',...(url.searchParams.has('kinds')?{kinds:url.searchParams.get('kinds').split(',').filter(Boolean)}:{}),offset:Number(url.searchParams.get('offset')||0),limit:Number(url.searchParams.get('limit')||30)}));return;}
       if(req.method==='GET'&&pathname==='/api/search/original'){json(res,200,await studioSearch.original(Object.fromEntries(['scopeId','kind','id','conversationId','sourceScopeId'].filter(key=>url.searchParams.has(key)).map(key=>[key,url.searchParams.get(key)]))));return;}
       if(req.method==='GET'&&pathname==='/api/budgets'){json(res,200,await governance.budgets());return;}
@@ -238,7 +246,7 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && pathname === '/api/workspace') { json(res, 200, await workspaceStore.getSnapshot()); return; }
       if (req.method === 'GET' && pathname === '/api/operations') { json(res, 200, { ...(await operationsStore.getSnapshot()), scheduler: { intervalSeconds: 30, error: routineError } }); return; }
       if (req.method === 'GET' && pathname === '/api/providers') { json(res, 200, await providerStore.getSnapshot()); return; }
-      if (req.method === 'GET' && pathname === '/api/governance') { json(res, 200, await governanceSnapshot()); return; }
+      if (req.method === 'GET' && pathname === '/api/governance') { json(res, 200, await governanceSnapshot(url.searchParams.has('scopeId')?url.searchParams.get('scopeId'):undefined)); return; }
       if (req.method === 'GET' && pathname === '/api/sources') { json(res, 200, await sources.snapshot({ scopeId: url.searchParams.get('scopeId') })); return; }
       if (req.method === 'GET' && pathname === '/api/sources/detail') { json(res, 200, await sources.detail({ id: url.searchParams.get('id'), scopeId: url.searchParams.get('scopeId') })); return; }
       if (req.method === 'GET' && pathname === '/api/repositories') { json(res, 200, await repositoryWork.snapshot()); return; }

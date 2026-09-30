@@ -1,3 +1,6 @@
+import today from './locales/today.en.js';
+import memoryReview from './locales/memory-review.en.js';
+import resultInsights from './locales/result-insights.en.js';
 import search from './locales/search.en.js';
 import workflowFields from './locales/workflow-fields.en.js';
 import budgets from './locales/budgets.en.js';
@@ -10,7 +13,7 @@ import workflows from './locales/workflows.en.js';
 import experience from './locales/experience.en.js';
 
 // Source-language keys are application copy, never values read from the archive.
-export const english = Object.freeze({...search,...workflowFields,...budgets,...executionPreview,...githubChecks, ...productivity, ...core, ...workspace, ...workflows, ...experience});
+export const english = Object.freeze({...today,...memoryReview,...resultInsights,...search,...workflowFields,...budgets,...executionPreview,...githubChecks, ...productivity, ...core, ...workspace, ...workflows, ...experience});
 export const LANGUAGE_KEY = 'fuori-studio-language';
 export const languages = Object.freeze(['it', 'en']);
 const listeners = new Set(), bindings = new Map();

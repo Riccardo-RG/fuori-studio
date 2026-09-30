@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { defaultArchive } from './archive.mjs';
+import { aggregateResultInsights } from './result-insights.ts';
+import type { ResultInsightsContext } from './result-insights.ts';
 
 export type GovernanceSettings = { version: number; dailyCallLimit: number; maxCallSeconds: number; autonomousRoutines: boolean; maxAutonomousRunsPerDay: number; autonomousEnabledAt: string | null };
 export type BudgetTarget = { scopeId: string; projectId?: string; taskId?: string; runId?: string; budgetRunId?: string };
@@ -132,7 +134,11 @@ export function createGovernance({ storage = defaultArchive as Storage, clock = 
     const currentDay = day(), dailyCalls = state.usages.filter(record => record.day === currentDay).length, routineRuns = state.routineClaims.filter(record => record.day === currentDay).length;
     return { settings: copy(state.settings), period: { day: currentDay, resetAt: new Date(Date.parse(`${currentDay}T00:00:00.000Z`) + 86400000).toISOString() }, daily: { calls: dailyCalls, remaining: Math.max(0, state.settings.dailyCallLimit - dailyCalls), autonomousRuns: routineRuns, autonomousRemaining: Math.max(0, state.settings.maxAutonomousRunsPerDay - routineRuns) }, limits: { maxConcurrentCalls: MAX_CONCURRENT }, usages: copy(state.usages.slice(-200).reverse()), usageTotals: usageTotals(state.usages), dailyUsage: usageTotals(state.usages.filter(record => record.day === currentDay)), outcomes: copy(state.outcomes.slice(-200).reverse()), feedback: feedbackTotals(state.outcomes) };
   }
-  const snapshot = async () => { await initialize(); return view(checked(await storage.read(KEY, seed()))); };
+  const snapshot = async (context?: ResultInsightsContext) => {
+    await initialize();
+    const state = checked(await storage.read(KEY, seed()));
+    return { ...view(state), ...(context ? { insights: aggregateResultInsights(context, state) } : {}) };
+  };
   function preflightView(state: State, payload: BudgetTarget & { requiredCalls: number }) {
     const item = target(payload), requiredCalls = integer(payload.requiredCalls, 0, 1000, 'Chiamate previste'), daily = view(state).daily;
     const project = item.projectId ? budgetReport(state, { scopeId: item.scopeId, projectId: item.projectId }) : null;

@@ -1,4 +1,15 @@
 export default {
+  'Limite giornaliero':'Daily limit',
+  'Budget del progetto':'Project budget',
+  'Budget dell’incarico':'Assignment budget',
+  'Disponibili: {remaining} · richieste: {required}':'Available: {remaining} · required: {required}',
+  'Si rinnova il {date}.':'Resets on {date}.',
+  'Questo limite vale per tutta la durata del lavoro e non si rinnova ogni giorno.':'This limit applies for the lifetime of the work and does not reset daily.',
+  'Apri i limiti giornalieri in Routine':'Open daily limits in Routines',
+  'Apri Budget':'Open Budget',
+  'Puoi tornare a questo avvio dopo aver controllato i limiti. Le selezioni dell’anteprima restano conservate.':'You can return to this start after checking the limits. Your preview selections are preserved.',
+  'Hai modificato la selezione. Aggiorna l’anteprima prima di avviare.':'You changed the selection. Refresh the preview before starting.',
+
   'Codex · questo computer': 'Codex · this computer',
 'Cerca nello studio':'Search the studio','⌕ Cerca nello studio':'⌕ Search the studio',
 'PRIMA DI AVVIARE':'BEFORE STARTING','Cosa sa questo agente?':'What does this agent know?',
