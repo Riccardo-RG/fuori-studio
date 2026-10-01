@@ -4,14 +4,15 @@ import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promise
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createProviderStore } from '../lib/providers.mjs';
+import { createGovernance } from '../lib/governance.ts';
 
 const KEY = 'test-credential-never-print-in-public-output';
 const completion = (text = 'A useful answer.') => ({ choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: { prompt_tokens: 11, completion_tokens: 7 } });
 const json = (value, options) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' }, ...options });
-async function fixture(t, fetchImpl = async () => json(completion())) {
+async function fixture(t, fetchImpl = async () => json(completion()), options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'fuori-providers-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  return { directory, file: join(directory, 'providers.json'), store: createProviderStore({ directory, fetchImpl, executionPolicy: (_meta, invoke, signal) => invoke(signal) }) };
+  return { directory, file: join(directory, 'providers.json'), store: createProviderStore({ directory, fetchImpl, executionPolicy: (_meta, invoke, signal) => invoke(signal), ...options }) };
 }
 async function connect(store, type = 'deepseek', more = {}) {
   const result = await store.mutate('saveConnection', { name: `Test ${type}`, type, model: `${type}-model`, apiKey: KEY, ...more });
@@ -44,6 +45,71 @@ test('defaults are local Codex only and snapshots never expose credentials', asy
   assert.notEqual((await store.getSnapshot()).connections[1].name, 'Mutated outside');
   assert.equal((await store.getSnapshot()).assignments.nova, 'codex');
   assert.equal(calls, 0, 'configuration and status must not make billable calls');
+});
+
+test('Codex supports legacy text and structured results while validating counts and redacting secrets', async t => {
+  let output;
+  const { store } = await fixture(t, undefined, { codexRunner: async () => output });
+  await connect(store);
+  const run = () => store.execute({ agentId: 'nova', scopeId: 'business', prompt: 'A harmless request.' });
+  output = 'Legacy answer';
+  assert.deepEqual((await run()).usage, { inputTokens: null, outputTokens: null });
+  output = { text: 'Echo: ' + KEY, usage: { inputTokens: 15, outputTokens: 0, privateMetadata: KEY }, diagnostic: KEY };
+  const result = await run();
+  assert.equal(result.text, 'Echo: [REDACTED]');
+  assert.deepEqual(result.usage, { inputTokens: 15, outputTokens: 0 });
+  assert.equal(JSON.stringify(result).includes(KEY), false);
+  for (const value of [-1, 0.5, '2', Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    output = { text: 'Answer', usage: { inputTokens: value, outputTokens: 3 } };
+    assert.deepEqual((await run()).usage, { inputTokens: null, outputTokens: 3 });
+  }
+  for (const value of [null, {}, { text: '' }, { text: ['invalid'] }, { text: 'x'.repeat(128001) }]) {
+    output = value;
+    await assert.rejects(run(), error => error.code === 'CODEX_FAILED' && !error.message.includes(KEY));
+  }
+});
+
+test('input-only analysis is explicit, Codex-only and forwarded unchanged through governed execution', async t => {
+  const calls = []; let reservations = 0, requests = 0;
+  const { store } = await fixture(t, async () => { requests++; return json(completion()); }, {
+    codexRunner: async (prompt, options) => { calls.push({ prompt, options }); return { text: 'Reviewed excerpts.', usage: { inputTokens: 10, outputTokens: 2 } }; },
+    executionPolicy: (_meta, invoke, signal) => { reservations++; return invoke(signal); },
+  });
+  const controller = new AbortController(), input = { agentId: 'nova', scopeId: 'business', prompt: 'Selected excerpts.', signal: controller.signal };
+  await store.execute({ ...input, inputOnly: true });
+  assert.equal(calls[0].options.inputOnly, true); assert.equal(calls[0].options.signal, controller.signal); assert.equal(calls[0].options.scopeId, 'business');
+  await store.execute(input); assert.equal(calls[1].options.inputOnly, false);
+  await store.execute({ ...input, inputOnly: false }); assert.equal(calls[2].options.inputOnly, false);
+  for (const inputOnly of [null, 1, 'true', {}]) await assert.rejects(store.execute({ ...input, inputOnly }));
+  assert.equal(reservations, 3); assert.equal(calls.length, 3);
+  const id = await connect(store); await enable(store, id);
+  await assert.rejects(store.execute({ ...input, inputOnly: true }), { code: 'PROVIDER_INPUT_ONLY_UNSUPPORTED' });
+  assert.equal(reservations, 3); assert.equal(requests, 0);
+});
+
+test('Codex reported usage reaches the governed ledger and absent counts stay unknown', async t => {
+  let value, queue = Promise.resolve(), output;
+  const storage = {
+    async read(_key, fallback) { await queue; return structuredClone(value || fallback); },
+    update(_key, fn, fallback) {
+      const operation = queue.then(() => { value = structuredClone(fn(structuredClone(value || fallback))); return structuredClone(value); });
+      queue = operation.catch(() => {}); return operation;
+    },
+  };
+  const governance = createGovernance({ storage });
+  const { store } = await fixture(t, undefined, { codexRunner: async () => output, executionPolicy: (meta, invoke, signal) => governance.execute(meta, invoke, signal) });
+  const run = () => store.execute({ agentId: 'nova', scopeId: 'business', prompt: 'PRIVATE_PROMPT' });
+  output = { text: 'PRIVATE_ANSWER', usage: { inputTokens: 27, outputTokens: 8 } }; await run();
+  output = 'PRIVATE_LEGACY_ANSWER'; await run();
+  const snapshot = await governance.snapshot();
+  assert.equal(snapshot.daily.calls, 2);
+  assert.equal(snapshot.usageTotals.inputTokens, 27);
+  assert.equal(snapshot.usageTotals.outputTokens, 8);
+  assert.equal(snapshot.usageTotals.unknownInputCount, 1);
+  assert.equal(snapshot.usageTotals.unknownOutputCount, 1);
+  assert.equal(snapshot.usageTotals.complete, false);
+  assert.equal(snapshot.usages.find(item => item.inputTokens === 27).connectionId, 'codex');
+  assert.doesNotMatch(JSON.stringify(value), /PRIVATE_/);
 });
 
 test('scope authorization is explicit and fail-closed for assigned and overridden services', async t => {

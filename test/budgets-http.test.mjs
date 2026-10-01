@@ -16,6 +16,7 @@ async function fixture(t, { hybrid = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'fuori-budgets-http-')), binary = join(directory, 'codex-stub'), log = join(directory, 'calls.jsonl');
   await writeFile(binary, `#!${process.execPath}
 const fs=require('node:fs');
+if(process.argv.includes('app-server'))process.exit(1);
 if(process.argv.includes('login')){console.log('Logged in using ChatGPT');process.exit(0);}
 let prompt='';process.stdin.on('data',value=>prompt+=value);process.stdin.on('end',()=>{fs.appendFileSync(process.env.TEST_CALL_LOG,JSON.stringify({prompt})+'\\n');if(prompt.includes('BUDGET_TEST_FORCE_FAILURE'))process.exit(1);console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Verified fake deliverable.'}}));});
 `, { mode: 0o700 });

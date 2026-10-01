@@ -12,9 +12,12 @@ type Publication = { id: string; version: number; status: 'preview' | 'publishin
 type Candidate = { version: 1; runVersion: number; connectionVersion: number; baseTree: string; entries: Entry[]; patchHash: string };
 type State = { version: 1; connections: Connection[]; publications: Publication[] };
 type CheckResult = { id: string; source: 'check_run' | 'commit_status'; name: string; state: string; url?: string };
+type AnalysisEntry = { path: string; mode: string; type: string; sha: string; size: number | null };
+type AnalysisSkip = { path: string; reason: 'unsupported' | 'generated' | 'binary' | 'oversized' | 'secret' | 'limit' };
 export type GitHubOptions = { storage: Storage; workspace: Workspace; approvedRun(input: { id: string }): Promise<ApprovedRun>; transport?: typeof fetch; now?: () => number; requestTimeoutMs?: number };
 const KEY = 'github', API = 'https://api.github.com', SHA = /^[a-f0-9]{40}$/, HASH = /^[a-f0-9]{64}$/;
 const MAX_RESPONSE = 8 * 1024 * 1024, MAX_FILE = 1024 * 1024;
+const ANALYSIS_ENTRIES = 4000, ANALYSIS_FILES = 12, ANALYSIS_CHARACTERS = 8000, ANALYSIS_EXCERPT = 2000;
 const internalErrors = new WeakSet<object>();
 const fail = (message: string, code = 'GITHUB_INVALID', statusCode = 400) => { const error = Object.assign(Error(message), { code, statusCode, status: statusCode }); internalErrors.add(error); return error; };
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -40,6 +43,33 @@ function noSecrets(value: string, token = '') {
 }
 const segment = (value: string) => encodeURIComponent(value);
 const refPath = (value: string) => value.split('/').map(segment).join('/');
+function analysisPath(value: unknown, token: string): string | null {
+  try { const path = filePath(value); noSecrets(path, token); return /\p{C}/u.test(path) || path !== path.trim() || /(?:^|\/)(?:secrets?(?:\.[^/]+)?|credentials[^/]*|\.git-credentials|\.pypirc|\.docker|\.config)(?:\/|$)/i.test(path) ? null : path; }
+  catch { return null; } // Never echo a protected or credential-bearing filename.
+}
+function analysisKind(path: string): number {
+  const name = path.split('/').at(-1)!.toLowerCase();
+  if (/^readme(?:\.[^.]+)?$/.test(name)) return 0;
+  if (/^(?:package\.json|pyproject\.toml|requirements[^/]*\.txt|cargo\.toml|go\.mod|gemfile|composer\.json|pom\.xml|build\.gradle|dockerfile|makefile|tsconfig\.json)$/.test(name)) return 1;
+  if (/^(?:server|main|index|app|cli)\.(?:[cm]?[jt]sx?|py|rs|go|rb|php)$/.test(name)) return 2;
+  if (/^(?:docs?|documentation)\//i.test(path) || /\.(?:md|mdx|rst|adoc)$/i.test(name)) return 3;
+  if (/(?:^|\/)(?:tests?|__tests__)\//i.test(path) || /[.-](?:test|spec)\./i.test(name)) return 4;
+  return 5;
+}
+function analysisExcluded(path: string): AnalysisSkip['reason'] | null {
+  if (/(?:^|\/)(?:dist|build|coverage|vendor|generated|\.next|\.cache|\.venv|venv|target|__pycache__)(?:\/|$)|\.generated\.|(?:\.min\.[cm]?js|\.map|\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i.test(path)) return 'generated';
+  if (/\.(?:png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|eot|mp[34]|mov|zip|gz|tar|exe|dll|so|dylib|wasm|class|pyc|bin)$/i.test(path)) return 'binary';
+  return null;
+}
+function analysisExcerpt(content: string, terms: string[], limit: number) {
+  const lines = content.split('\n'); let first = 0;
+  const match = lines.findIndex(line => terms.some(term => line.toLowerCase().includes(term)));
+  if (content.length > limit && match >= 0) first = Math.max(0, match - 3);
+  let excerpt = lines.slice(first).join('\n').slice(0, limit);
+  // Avoid splitting a surrogate pair at the character budget boundary.
+  if (/[\uD800-\uDBFF]$/.test(excerpt)) excerpt = excerpt.slice(0, -1);
+  return { text: excerpt, startLine: first + 1, endLine: first + Math.max(1, excerpt.split('\n').length), truncated: first > 0 || excerpt.length < content.length };
+}
 function expected(value: unknown, version: number) { if (!Number.isSafeInteger(value) || value !== version) throw fail('La configurazione è cambiata. Ricarica e ripeti la revisione.', 'GITHUB_CONFLICT', 409); }
 function publicConnection(item: Connection) { return { id: item.id, version: item.version, name: item.name, scopeIds: [...item.scopeIds], repositories: [...item.repositories], allowPublish: item.allowPublish, createdAt: item.createdAt, tokenConfigured: true }; }
 function publicPublication(item: Publication) { return clone({ id: item.id, version: item.version, status: item.status, runId: item.runId, scopeId: item.scopeId, connectionId: item.connectionId, repository: item.repository, baseBranch: item.baseBranch, baseCommit: item.baseCommit, patchHash: item.patchHash, files: item.files, title: item.title, body: item.body, branch: item.branch, createdAt: item.createdAt, ...(item.url ? { url: item.url } : {}), ...(item.error ? { error: item.error } : {}), ...(item.treeSha ? { treeSha: item.treeSha } : {}), ...(item.commitSha ? { commitSha: item.commitSha } : {}), ...(item.actualBaseCommit ? { actualBaseCommit: item.actualBaseCommit, baseChanged: item.baseChanged === true } : {}) }); }
@@ -146,28 +176,33 @@ export function createGitHub({ storage, workspace, approvedRun, transport = fetc
     if (write && !connection.allowPublish) throw fail('La pubblicazione non è abilitata per questo collegamento.', 'GITHUB_WRITE_DENIED', 403);
     return connection;
   }
-  async function request(connection: Connection, path: string, { method = 'GET', body, missing = false }: { method?: 'GET' | 'POST'; body?: unknown; missing?: boolean } = {}): Promise<unknown> {
+  async function request(connection: Connection, path: string, { method = 'GET', body, missing = false, signal }: { method?: 'GET' | 'POST'; body?: unknown; missing?: boolean; signal?: AbortSignal } = {}): Promise<unknown> {
     if (!path.startsWith('/repos/') || path.includes('#')) throw fail('Endpoint GitHub non consentito.');
+    if (signal?.aborted) throw fail('Analisi GitHub annullata.', 'GITHUB_ABORTED', 499);
     const remaining = operationDeadline - Date.now(); if (remaining <= 0) throw fail('L’operazione GitHub ha superato un minuto. Nessuna scrittura viene ripetuta automaticamente.', 'GITHUB_TIMEOUT', 408);
-    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), Math.min(remaining, requestTimeoutMs));
+    const controller = new AbortController(); let rejectInterrupted: (error: Error) => void = () => {};
+    const interrupted = new Promise<never>((_, reject) => { rejectInterrupted = reject; });
+    const abort = () => { rejectInterrupted(fail('Analisi GitHub annullata.', 'GITHUB_ABORTED', 499)); controller.abort(); };
+    signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => { rejectInterrupted(fail('La richiesta GitHub ha superato il tempo disponibile.', 'GITHUB_TIMEOUT', 408)); controller.abort(); }, Math.min(remaining, requestTimeoutMs));
     try {
-      const response = await transport(API + path, { method, redirect: 'error', signal: controller.signal,
+      const response = await Promise.race([transport(API + path, { method, redirect: 'error', signal: controller.signal,
         headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${connection.token}`, 'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'FuoriStudio/0.5', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        ...(body ? { body: JSON.stringify(body) } : {}) });
-      if (response.status === 404 && missing) { await response.body?.cancel(); return null; }
-      if (!response.ok) { await response.body?.cancel(); throw Object.assign(fail(response.status === 401 || response.status === 403 ? 'GitHub ha rifiutato le credenziali o i permessi. Controlla scadenza, repository e autorizzazioni.' : response.status === 404 ? 'Repository o risorsa GitHub non disponibile per questo collegamento.' : 'GitHub non ha accettato la richiesta. Verifica lo stato prima di ripetere.', 'GITHUB_REQUEST_REJECTED', 502), { rejected: response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status) }); }
-      if (Number(response.headers.get('content-length')) > MAX_RESPONSE || response.headers.get('link')?.includes('rel="next"')) throw fail('Risposta GitHub troppo grande o incompleta.', 'GITHUB_RESPONSE_LIMIT', 502);
+        ...(body ? { body: JSON.stringify(body) } : {}) }), interrupted]);
+      if (response.status === 404 && missing) { void response.body?.cancel().catch(() => {}); return null; }
+      if (!response.ok) { void response.body?.cancel().catch(() => {}); throw Object.assign(fail(response.status === 401 || response.status === 403 ? 'GitHub ha rifiutato le credenziali o i permessi. Controlla scadenza, repository e autorizzazioni.' : response.status === 404 ? 'Repository o risorsa GitHub non disponibile per questo collegamento.' : 'GitHub non ha accettato la richiesta. Verifica lo stato prima di ripetere.', 'GITHUB_REQUEST_REJECTED', 502), { rejected: response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status) }); }
+      if (Number(response.headers.get('content-length')) > MAX_RESPONSE || response.headers.get('link')?.includes('rel="next"')) { void response.body?.cancel().catch(() => {}); throw fail('Risposta GitHub troppo grande o incompleta.', 'GITHUB_RESPONSE_LIMIT', 502); }
       const reader = response.body?.getReader(); if (!reader) throw fail('Risposta GitHub vuota.', 'GITHUB_RESPONSE_INVALID', 502);
       const chunks: Uint8Array[] = []; let size = 0;
-      try { while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > MAX_RESPONSE) throw fail('Risposta GitHub troppo grande.', 'GITHUB_RESPONSE_LIMIT', 502); chunks.push(value); } } finally { await reader.cancel(); }
+      try { while (true) { const { done, value } = await Promise.race([reader.read(), interrupted]); if (done) break; size += value.length; if (size > MAX_RESPONSE) throw fail('Risposta GitHub troppo grande.', 'GITHUB_RESPONSE_LIMIT', 502); chunks.push(value); } } finally { void reader.cancel().catch(() => {}); }
       try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown; } catch { throw fail('Risposta GitHub non valida.', 'GITHUB_RESPONSE_INVALID', 502); }
     } catch (error) {
       if (record(error) && internalErrors.has(error)) throw error;
       throw fail('Connessione GitHub interrotta. Nessuna richiesta di scrittura viene ripetuta automaticamente.', 'GITHUB_TRANSPORT', 502);
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
-  async function metadata(connection: Connection, repository: string) {
-    const value = await request(connection, `/repos/${repository}`);
+  async function metadata(connection: Connection, repository: string, signal?: AbortSignal) {
+    const value = await request(connection, `/repos/${repository}`, { signal });
     if (!record(value) || typeof value.full_name !== 'string' || value.full_name.toLowerCase() !== repository || typeof value.private !== 'boolean' || typeof value.default_branch !== 'string') throw fail('Repository GitHub restituito non corrispondente.', 'GITHUB_RESPONSE_INVALID', 502);
     return { repository, private: value.private, defaultBranch: branch(value.default_branch), archived: value.archived === true, url: `https://github.com/${repository}` };
   }
@@ -177,8 +212,8 @@ export function createGitHub({ storage, workspace, approvedRun, transport = fetc
     if (!record(result) || result.ref !== `refs/heads/${value}` || !record(result.object) || result.object.type !== 'commit') throw fail('Riferimento GitHub non valido.', 'GITHUB_RESPONSE_INVALID', 502);
     return sha(result.object.sha);
   }
-  async function commitTree(connection: Connection, repository: string, commit: string) {
-    const value = await request(connection, `/repos/${repository}/git/commits/${sha(commit)}`);
+  async function commitTree(connection: Connection, repository: string, commit: string, signal?: AbortSignal) {
+    const value = await request(connection, `/repos/${repository}/git/commits/${sha(commit)}`, { signal });
     if (!record(value) || value.sha !== commit || !record(value.tree)) throw fail('Commit GitHub non corrispondente.', 'GITHUB_RESPONSE_INVALID', 502);
     return { tree: sha(value.tree.sha), parents: Array.isArray(value.parents) ? value.parents.map(item => record(item) ? sha(item.sha) : '') : [] };
   }
@@ -277,6 +312,80 @@ export function createGitHub({ storage, workspace, approvedRun, transport = fetc
     }),
     disconnect: (input: { id: string; expectedVersion: number }) => serial(async () => { const state = await load(), connection = state.connections.find(item => item.id === id(input.id)); if (!connection) throw fail('Collegamento non trovato.', 'GITHUB_NOT_FOUND', 404); expected(input.expectedVersion, connection.version); state.connections = state.connections.filter(item => item !== connection); await persist(state); return { disconnected: connection.id }; }),
     inspect: (input: { connectionId: string; scopeId: string; repository: string }) => serial(async () => { const state = await load(), repository = repo(input.repository), connection = await authorize(state, input.connectionId, input.scopeId, repository); return metadata(connection, repository); }),
+    authorizeAnalysis: (input: { connectionId: string; scopeId: string; repository: string; expectedVersion?: number }) => serial(async () => {
+      const repository = repo(input.repository), connection = await authorize(await load(), input.connectionId, input.scopeId, repository);
+      if (input.expectedVersion !== undefined) expected(input.expectedVersion, connection.version);
+      return { connectionId: connection.id, version: connection.version, repository };
+    }),
+    scanRepository: (input: { connectionId: string; scopeId: string; repository: string; ref?: string; query: string; signal?: AbortSignal }) => serial(async () => {
+      const { signal } = input;
+      if (signal?.aborted) throw fail('Analisi GitHub annullata.', 'GITHUB_ABORTED', 499);
+      const repository = repo(input.repository), connection = await authorize(await load(), input.connectionId, input.scopeId, repository);
+      const query = text(input.query, 6000), reference = input.ref === undefined ? (await metadata(connection, repository, signal)).defaultBranch : branch(input.ref);
+      if (/\p{C}/u.test(reference)) throw fail('Riferimento GitHub non valido.');
+      noSecrets(reference + '\n' + query, connection.token);
+      const terms = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_-]{3,64}/gu) || [])].slice(0, 32);
+      const resolved = await request(connection, `/repos/${repository}/commits/${segment(reference)}`, { signal });
+      if (!record(resolved)) throw fail('Commit GitHub non valido.', 'GITHUB_RESPONSE_INVALID', 502);
+      const commit = sha(resolved.sha);
+      if (SHA.test(reference) && reference !== commit) throw fail('Commit GitHub non corrispondente.', 'GITHUB_RESPONSE_INVALID', 502);
+      const root = (await commitTree(connection, repository, commit, signal)).tree;
+      const value = await request(connection, `/repos/${repository}/git/trees/${root}?recursive=1`, { signal });
+      if (!record(value) || value.sha !== root || typeof value.truncated !== 'boolean' || !Array.isArray(value.tree)) throw fail('Albero GitHub non valido.', 'GITHUB_RESPONSE_INVALID', 502);
+      const retained = value.tree.slice(0, ANALYSIS_ENTRIES), treeTruncated = value.truncated || value.tree.length > ANALYSIS_ENTRIES;
+      const entries = new Map<string, AnalysisEntry>(), foldedPaths = new Set<string>(), skipped: AnalysisSkip[] = [];
+      const skip = (path: string, reason: AnalysisSkip['reason']) => { if (skipped.length < 100) skipped.push({ path, reason }); };
+      for (const raw of retained) {
+        if (!record(raw) || typeof raw.path !== 'string' || !raw.path || raw.path.length > 1024 || !['100644', '100755', '040000', '120000', '160000'].includes(String(raw.mode)) || raw.type !== (raw.mode === '040000' ? 'tree' : raw.mode === '160000' ? 'commit' : 'blob')) throw fail('Voce albero GitHub non valida.', 'GITHUB_RESPONSE_INVALID', 502);
+        const blobSha = sha(raw.sha);
+        if (raw.size !== undefined && (!Number.isSafeInteger(raw.size) || (raw.size as number) < 0)) throw fail('Dimensione file GitHub non valida.', 'GITHUB_RESPONSE_INVALID', 502);
+        const path = analysisPath(raw.path, connection.token); if (!path) continue;
+        const folded = path.normalize('NFC').toLowerCase();
+        if (foldedPaths.has(folded)) throw fail('Nomi GitHub duplicati o ambigui.', 'GITHUB_RESPONSE_INVALID', 502);
+        foldedPaths.add(folded); entries.set(path, { path, mode: String(raw.mode), type: String(raw.type), sha: blobSha, size: raw.size === undefined ? null : raw.size as number });
+      }
+      const eligible: AnalysisEntry[] = [];
+      for (const entry of entries.values()) {
+        if (entry.type === 'tree') continue;
+        const parts = entry.path.split('/'); let validParents = true;
+        for (let index = 1; index < parts.length; index++) if (entries.get(parts.slice(0, index).join('/'))?.type !== 'tree') { validParents = false; break; }
+        if (!validParents || !['100644', '100755'].includes(entry.mode)) { skip(entry.path, 'unsupported'); continue; }
+        const excluded = analysisExcluded(entry.path); if (excluded) { skip(entry.path, excluded); continue; }
+        if (analysisKind(entry.path) === 5 && !/\.(?:[cm]?[jt]sx?|py|rs|go|rb|php|java|kt|swift|c|cc|cpp|h|hpp|cs|sh|sql|json|toml|ya?ml|xml|html?|css|scss|txt|graphql|proto)$/i.test(entry.path)) { skip(entry.path, 'unsupported'); continue; }
+        if (entry.size !== null && entry.size > MAX_FILE) { skip(entry.path, 'oversized'); continue; }
+        eligible.push(entry);
+      }
+      const score = (entry: AnalysisEntry) => terms.filter(term => entry.path.toLowerCase().includes(term)).length * 20 - entry.path.split('/').length;
+      eligible.sort((a, b) => score(b) - score(a) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+      // Guarantee a representative file from each architecture category before filling by query relevance.
+      const selected: AnalysisEntry[] = [];
+      for (let kind = 0; kind < 5; kind++) { const entry = eligible.find(item => analysisKind(item.path) === kind); if (entry) selected.push(entry); }
+      for (const entry of eligible) if (selected.length < ANALYSIS_FILES && !selected.includes(entry)) selected.push(entry);
+      for (const entry of eligible) if (!selected.includes(entry)) skip(entry.path, 'limit');
+      const files: Array<{ path: string; blobSha: string; text: string; startLine: number; endLine: number; truncated: boolean; url: string }> = []; let remaining = ANALYSIS_CHARACTERS;
+      for (const [index, entry] of selected.entries()) {
+        const blob = await request(connection, `/repos/${repository}/git/blobs/${entry.sha}`, { signal });
+        if (!record(blob) || blob.sha !== entry.sha || blob.encoding !== 'base64' || typeof blob.content !== 'string' || !Number.isSafeInteger(blob.size) || (blob.size as number) < 0) throw fail('File GitHub non valido.', 'GITHUB_RESPONSE_INVALID', 502);
+        if ((blob.size as number) > MAX_FILE) { skip(entry.path, 'oversized'); continue; }
+        const normalized = blob.content.replace(/\n/g, '');
+        if (normalized.length > 4 * Math.ceil(MAX_FILE / 3) || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(normalized)) throw fail('Codifica GitHub non valida.', 'GITHUB_RESPONSE_INVALID', 502);
+        const bytes = Buffer.from(normalized, 'base64');
+        if (bytes.length !== blob.size || blobHash(bytes) !== entry.sha || entry.size !== null && bytes.length !== entry.size) throw fail('Contenuto GitHub non corrispondente all’impronta.', 'GITHUB_RESPONSE_INVALID', 502);
+        const content = bytes.toString('utf8');
+        if (bytes.includes(0) || !Buffer.from(content, 'utf8').equals(bytes) || /[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(content)) { skip(entry.path, 'binary'); continue; }
+        try { noSecrets(content, connection.token); } catch { skip(entry.path, 'secret'); continue; }
+        if (!content.trim()) { skip(entry.path, 'unsupported'); continue; }
+        if (/(?:@generated|auto[- ]generated|code generated)[^\n]{0,150}(?:do not edit|don't edit)|(?:do not edit|don't edit)[^\n]{0,150}(?:auto[- ]generated|code generated)/i.test(content.slice(0, 1000))) { skip(entry.path, 'generated'); continue; }
+        const excerpt = analysisExcerpt(content.replace(/\r\n?/g, '\n'), terms, Math.min(ANALYSIS_EXCERPT, Math.floor(remaining / (selected.length - index))));
+        if (!excerpt.text.trim()) { skip(entry.path, 'unsupported'); continue; }
+        remaining -= excerpt.text.length;
+        files.push({ path: entry.path, blobSha: entry.sha, ...excerpt, url: `https://github.com/${repository}/blob/${commit}/${entry.path.split('/').map(segment).join('/')}#L${excerpt.startLine}-L${excerpt.endLine}` });
+      }
+      if (signal?.aborted) throw fail('Analisi GitHub annullata.', 'GITHUB_ABORTED', 499);
+      const current = await authorize(await load(), connection.id, input.scopeId, repository); expected(connection.version, current.version);
+      if (signal?.aborted) throw fail('Analisi GitHub annullata.', 'GITHUB_ABORTED', 499);
+      return { repository, ref: reference, commit, connectionVersion: connection.version, url: `https://github.com/${repository}/tree/${commit}`, files, coverage: { treeEntries: retained.length, eligibleFiles: eligible.length, readFiles: files.length, omittedFiles: eligible.length - files.length, treeTruncated }, skipped, capturedAt: stamp() };
+    }),
     checks: (input: { connectionId: string; scopeId: string; repository: string; ref: string }) => serial(async () => {
       const state = await load(), repository = repo(input.repository), connection = await authorize(state, input.connectionId, input.scopeId, repository), reference = branch(input.ref);
       noSecrets(reference, connection.token);

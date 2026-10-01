@@ -29,6 +29,8 @@ The default AI connection uses the Codex CLI already signed in on your computer.
 
 Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** prepares isolated code patches and executes configured checks; **Fonti** imports documents and read-only sources, with optional live web research through an authorized OpenAI API connection. Neither an AI reply nor a plan approval publishes code or sends messages. Review the recorded evidence before accepting a result.
 
+Use **Analizza repository** in chat or **Confronta repository** in the GitHub panel for [read-only repository analysis](docs/REPOSITORY_ANALYSIS.md) of one to five explicitly authorized repositories. Preparation imports bounded, commit-pinned source documents without calling AI. Review sources, destinations and three sequential stages, then confirm each start. This mode currently requires the built-in local Codex connection on this computer; it sends the reviewed context to OpenAI, with no OpenAI API, third-party-provider or paired-worker fallback. Cancelling after preparation does not remove the imported local sources. Browser verification used fixtures and a fake provider, not real private repositories or live AI calls.
+
 ## What works
 
 | Capability | Current behavior |
@@ -43,6 +45,7 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Conversation assignments | Turn a saved message into an editable queued assignment on an owned project, preserving source permissions and duplicate-safe save receipts |
 | Studio search | Local search across current/archived conversations, memories, documents, workflows, tasks, deliveries and repository runs, with scoped results and saved originals |
 | Execution preview | Per-role context, history and service review before explicit starts; exclusions, expiring receipts and revalidation without AI calls |
+| Operational self-awareness | Bounded startup source evidence plus scoped provider, call-budget and usage facts; inspect each agent's system knowledge before execution, with unavailable values kept explicit |
 | Memory | Source-linked suggestions, review inbox, per-scope learning policies, conflicts, undo and deletion suppression |
 | Portability | Scoped Markdown/JSON export, passphrase-encrypted packages, previewed imports as proposals |
 | Identity | Optional OIDC owner login, protected sessions, CSRF checks and immediate revocation |
@@ -50,6 +53,7 @@ Ordinary chat remains a text workflow. Explicit tools extend it: **Repository** 
 | Remote repository work | Separate repository grants, worker-local aliases/check policies, durable receipt recovery without rerunning edits |
 | Deployment and recovery | Guided readiness, secret-file configuration, hosted container recipe, verified encrypted backups and new-directory restore |
 | Authenticated GitHub | Scoped private-file imports, commit-specific CI results, exact approved patch previews, isolated branches and explicitly published draft PRs |
+| Repository analysis | Explicit 1–5-repository sample, immutable commit/file/line evidence, then confirmed local-Codex technical → product → synthesis stages; partial coverage, no test execution during preparation |
 | Memory evaluation | Owner-labeled retrieval cases, scope exclusions, missing facts, stale labels and versioned usefulness feedback |
 | Knowledge sync | Opt-in scope replication, three-way conflicts and durable deletion markers; no credential transfer |
 | Storage | SQLite transactions with authenticated encrypted records and encrypted migration backups |
@@ -123,6 +127,7 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 - [Reviewing memory quality](docs/MEMORY_REVIEW.md)
 - [Local search and saved originals](docs/SEARCH.md)
 - [Reviewing context before execution](docs/EXECUTION_PREVIEW.md)
+- [Operational self-awareness and source evidence](docs/SYSTEM_AWARENESS.md)
 - [Reusable workflow fields](docs/WORKFLOW_FIELDS.md)
 - [Project and assignment call budgets](docs/BUDGETS.md)
 - [Dioramas, activity and accessible controls](docs/VISUAL_EXPERIENCE.md)
@@ -134,6 +139,7 @@ Start with [development guidance](CONTRIBUTING.md), [architecture decisions](doc
 - [Verified backups and restore](docs/DEPLOYMENT_RECOVERY.md)
 - [Remote repository execution](docs/REMOTE_EXECUTION.md)
 - [Private GitHub access and reviewed publication](docs/GITHUB.md)
+- [Read-only repository analysis contract and current status](docs/REPOSITORY_ANALYSIS.md)
 - [GitHub checks and commit status results](docs/GITHUB_CHECKS.md)
 - [Reusable workflows and quick actions](docs/PRODUCTIVITY.md)
 - [Measuring memory retrieval and usefulness](docs/MEMORY_EVALUATION.md)

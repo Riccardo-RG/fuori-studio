@@ -66,7 +66,9 @@ test('specialty changes invalidate reviewed execution before AI calls and fresh 
   assert.deepEqual(result.steps[0].execution.capability,{version:3,catalogVersion:1,profileId:'code-review'});
   assert.match(f.calls[0].prompt,/SPECIALIZZAZIONE: Revisione codice/);
   assert.match(f.calls[0].prompt,/Non inventare citazioni, file, righe, test superati/);
-  assert.match(f.calls[0].prompt,/Non hai strumenti web, accesso a repository/);
+  assert.match(f.calls[0].prompt,/Non hai strumenti web, accesso generico a repository o capacità di pubblicazione/);
+  assert.match(f.calls[0].prompt,/Puoi analizzare gli estratti tecnici forniti dall’app nella conoscenza verificabile/);
+  assert.match(f.calls[0].prompt,/Non eseguire strumenti/);
 });
 
 test('executor produces reviewed versions and a proposed memory while preserving restricted-agent provenance', async t => {

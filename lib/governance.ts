@@ -173,6 +173,14 @@ export function createGovernance({ storage = defaultArchive as Storage, clock = 
   }
   return {
     snapshot, budgets,
+    async agentUsage(input:{scopeId:string;agentId:string;projectId?:string}) {
+      object(input,['scopeId','agentId','projectId']); identifier(input.scopeId); identifier(input.agentId);
+      if(input.projectId!==undefined)identifier(input.projectId);
+      await initialize();
+      const state=checked(await storage.read(KEY,seed()));
+      // Aggregate the entire ledger, never the bounded UI page or other agents/scopes.
+      return usageTotals(state.usages.filter(record=>record.scopeId===input.scopeId&&record.agentId===input.agentId&&(!input.projectId||record.projectId===input.projectId)));
+    },
     async preflight(payload: BudgetTarget & { requiredCalls: number }) {
       object(payload, [...TARGET_KEYS, 'requiredCalls']); target(payload); integer(payload.requiredCalls, 0, 1000, 'Chiamate previste');
       await initialize(); return preflightView(checked(await storage.read(KEY, seed())), payload);

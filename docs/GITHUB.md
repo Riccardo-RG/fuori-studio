@@ -1,12 +1,12 @@
 # Authenticated GitHub projects
 
-The GitHub connection adds two capabilities to the studio: importing selected text files from private repositories with immutable provenance, and publishing a human-approved repository result as a new branch and draft pull request. It does not merge pull requests, update the default branch, install repository dependencies, or share GitHub credentials with an AI agent.
+The GitHub connection supports importing selected text files from private repositories with immutable provenance, preparing bounded read-only multi-repository analysis, and publishing a human-approved repository result as a new branch and draft pull request. The connection does not merge pull requests, update the default branch, install repository dependencies, or share GitHub credentials with an AI agent.
 
 This connection is separate from studio login, AI provider connections, paired workers and any temporary GitHub CLI login used to develop Fuori Studio itself. No existing `gh` or Codex credential is discovered or reused.
 
 ## Connect a repository
 
-Create a GitHub fine-grained personal access token limited to the repositories you intend to use. For file imports, grant repository **Contents: read**. Publishing requires **Contents: write** and **Pull requests: write**, in addition to selecting publication permission inside Fuori Studio. Respect organization approval requirements and choose an expiration appropriate to your workflow. A connection saved in the studio does not prove the remote token is valid; use **Verifica accesso** to read repository metadata.
+Create a GitHub fine-grained personal access token limited to the repositories you intend to use. For file imports and read-only analysis preparation, grant repository **Contents: read**. Publishing requires **Contents: write** and **Pull requests: write**, in addition to selecting publication permission inside Fuori Studio. Respect organization approval requirements and choose an expiration appropriate to your workflow. A connection saved in the studio does not prove the remote token is valid; use **Verifica accesso** to read repository metadata.
 
 Open the **GitHub** tab in the work panel. Enter a descriptive name, the token, explicit workspace scopes, and repository names in `owner/repository` form. Enable publication only for connections that need it. The studio does not widen access to every repository visible to the token. GitHub's token permissions and the studio's scope/repository allowlist must both permit an operation.
 
@@ -18,11 +18,23 @@ Token-backed API calls go only to `https://api.github.com` using the versioned R
 
 Choose **Acquisisci un file** in the GitHub panel, then a connection, allowed repository, branch/tag/commit and relative file path. The server resolves the reference to an immutable commit, traverses its Git tree and verifies the file's Git blob SHA against its downloaded bytes. The resulting source retains repository, commit, blob SHA, path and a link pinned to that commit. Updating the branch afterward does not silently rewrite the previously imported source.
 
-Imports currently accept regular UTF-8 text files of up to 1 MiB. Binary files, symlinks, submodules, sensitive configuration paths and ambiguous names that collide by case or Unicode normalization are rejected. There is no private-repository crawler or automatic upload of the entire checkout. Refresh is an explicit source operation and rechecks the connection and scope authorization.
+Imports currently accept regular UTF-8 text files of up to 1 MiB. Binary files, symlinks, submodules, sensitive configuration paths and ambiguous names that collide by case or Unicode normalization are rejected. Single-file import does not read the rest of the checkout. Refresh is an explicit source operation and rechecks the connection and scope authorization. The separate analysis sampler below does not import an entire checkout either.
 
 Imported content remains an untrusted source in its selected scope. Its instructions are not agent or owner instructions. Removing a GitHub connection blocks future reads and refreshes; it does not erase a document already imported into the encrypted source archive. Remove or mark that source stale separately if it should no longer contribute to context. Source freshness and provider/scope policies still apply when the text is used by an agent.
 
 GitHub documents the underlying [Git blob API](https://docs.github.com/en/rest/git/blobs), which supplies encoded content and the object identifier. Fuori Studio additionally verifies the bytes and follows only validated tree entries rather than a returned download URL.
+
+## Prepare a read-only repository analysis
+
+Choose **Analizza repository** in chat or **Confronta repository** in the GitHub panel. The dialog accepts an explicit objective and one to five authorized repositories in the current operative scope. **Leggi repository e prepara anteprima** resolves each selected ref to a commit, reads a bounded Git tree, verifies selected blobs and captures a representative text sample. README, manifests, entry points, documentation and tests are candidates; query relevance helps rank the sample. This preparation does not run code, execute tests, inspect every file, fetch issues or infer market demand from source code.
+
+Preparation makes no AI call. It imports one source document per repository and stores immutable commit/file/line provenance plus explicit coverage. The next operation is a separate execution preview showing source material, provider destinations and the three sequential calls: technical analysis by `forge`, product analysis by `growth`, then synthesis by `nova`. The stored goal is locked, workflows cannot be combined with this mode, and optional chat history is excluded by default. A failed stage stops the remaining sequence.
+
+This analysis currently permits only the built-in **Codex locale** connection on this computer for all three agents. OpenAI API connections, other providers and paired workers are not supported for this mode, and the studio does not silently change assignments or targets. Review each destination and confirm every analysis start. Local Codex sends the reviewed excerpts to OpenAI; local preparation and storage do not mean offline inference.
+
+Connection permission/version and source current status/version/digest are rechecked before use. Revocation blocks future preparation and reuse of a prepared analysis; it does not erase copies already imported into the local archive. Cancelling after preparation also leaves those sources available under their existing scope. Remove an imported document if it should no longer participate in ordinary source retrieval. GitHub credentials never enter the source documents or model prompts, but reviewed source excerpts are sent to the AI destinations explicitly confirmed for the analysis.
+
+The browser flow has been checked with injected repository fixtures and a fake provider, including cancellation before dispatch and the three-stage sequence. Those checks do not establish live GitHub or provider success. See [repository analysis](REPOSITORY_ANALYSIS.md) for limits, retention, evidence rules and the API sequence.
 
 ## Publish a reviewed change
 

@@ -1,3 +1,6 @@
+import {createStudioKnowledge} from './lib/studio-knowledge.ts';
+import {createSystemAwareness,configureSystemAwareness} from './lib/system-awareness.ts';
+import {createRepositoryAnalysis} from './lib/repository-analysis.ts';
 import {createTodayService} from './lib/today.ts';
 import {createMemoryReview} from './lib/memory-review.ts';
 import { createExecutionPreview } from './lib/execution-preview.ts';
@@ -14,7 +17,7 @@ import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve, sep, extname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getState, newConversation, selectScope, providerStatus, chatTurn, shutdownChat, rememberMessage, previewChat, conversations } from './lib/chat.mjs';
+import { getState, newConversation, selectScope, providerStatus, chatTurn, shutdownChat, rememberMessage, previewChat, conversations, configureRepositoryAnalysis } from './lib/chat.mjs';
 import { workspaceStore } from './lib/workspace.mjs';
 import { operationsStore } from './lib/operations.mjs';
 import { providerStore, configureCodexExecution, configureExecutionGovernor } from './lib/providers.mjs';
@@ -26,7 +29,7 @@ import { defaultArchive } from './lib/archive.mjs';
 import { createIdentity } from './lib/identity.mjs';
 import { createDeviceHub } from './lib/devices.mjs';
 import { createSyncService } from './lib/sync.mjs';
-import { runCodex } from './lib/codex.mjs';
+import { runCodexResult, codexStatus, codexAccountLimits } from './lib/codex.mjs';
 import { createPortability } from './lib/portability.mjs';
 import { createRepositoryWork } from './lib/repository-work.mjs';
 import { createPlanService } from './lib/plans.ts';
@@ -57,6 +60,17 @@ const portability = createPortability({storage:defaultArchive,workspace:workspac
 const plans = createPlanService();
 const governance = createGovernance({ storage: defaultArchive });
 configureExecutionGovernor((...args) => governance.execute(...args));
+const systemKnowledge=await createStudioKnowledge({root:appRoot});
+let awarenessAuth=null,awarenessAuthAt=0;
+configureSystemAwareness(createSystemAwareness({knowledge:systemKnowledge,governance,mode,destination:async input=>{
+  if(input.connection.type!=='codex')return {executionTarget:'api',authentication:'api_key'};
+  const target=input.executionTarget||(await devices.snapshot()).executionTarget||'local';
+  if(target!=='local')return {executionTarget:'paired',authentication:'unknown'};
+  if(!awarenessAuth||Date.now()-awarenessAuthAt>30000){awarenessAuthAt=Date.now();awarenessAuth=codexStatus();}
+  const status=await awarenessAuth;
+  const authentication=status.ready?(status.auth==='ChatGPT'?'chatgpt_login':'codex_login'):'unknown';
+  return {executionTarget:'local',authentication,accountQuota:mode==='local'&&authentication==='chatgpt_login'?await codexAccountLimits():null};
+}}));
 const repositoryWork = createRepositoryWork({
   storage: defaultArchive, workspace: workspaceStore, operations: operationsStore, providers: providerStore, mode, projectRoot: appRoot, remote: repositoryDevices,
   executeEditor: (...args) => governance.execute(...args),
@@ -79,6 +93,8 @@ const sources = createSourceStore({
   github: input => github.readFile(input),
 });
 configureSourceContext(sources);
+const repositoryAnalysis=createRepositoryAnalysis({storage:defaultArchive,workspace:workspaceStore,sources,github});
+configureRepositoryAnalysis(repositoryAnalysis);
 const today=createTodayService({workspace:workspaceStore,operations:operationsStore,repositories:repositoryWork,sources});
 const memoryReview=createMemoryReview({workspace:workspaceStore});
 const studioSearch=createStudioSearch({workspace:workspaceStore,conversations,sources,operations:operationsStore,repositories:repositoryWork});
@@ -87,6 +103,7 @@ const executionPreviews=createExecutionPreview({
   budget:plan=>governance.preflight({scopeId:plan.scopeId,...(plan.projectId?{projectId:plan.projectId}:{}),...(plan.kind==='task'?{taskId:plan.id}:plan.kind==='repository'?{runId:plan.id,budgetRunId:plan.budgetTarget.budgetRunId}:{}),requiredCalls:plan.kind==='chat'?Math.min(4,plan.steps.length):plan.steps.length}),
   destinations:async plan=>{
     const deviceState=await devices.snapshot();
+    if(plan.repositoryAnalysis&&deviceState.executionTarget&&deviceState.executionTarget!=='local')throw fail('L’analisi repository richiede Codex su questo computer. Seleziona il dispositivo locale e aggiorna l’anteprima.',409);
     for(const step of plan.steps){
       if(step.connection?.type!=='codex'){step.destination={name:step.connection?.name||'',type:'api'};continue;}
       const target=plan.kind==='repository'&&step.agentId==='forge'?plan.configuration.executionTarget:deviceState.executionTarget;
@@ -96,7 +113,14 @@ const executionPreviews=createExecutionPreview({
     return plan;
   },
 });
-configureCodexExecution({ authorize: scopeId => devices.authorize(scopeId), run: async (prompt, options) => { const result = await devices.run(prompt, options); return result === null ? runCodex(prompt, options) : result; } });
+configureCodexExecution({ authorize: scopeId => devices.authorize(scopeId), run: async (prompt, options) => {
+  if(options.inputOnly){
+    const deviceState=await devices.snapshot();
+    if(deviceState.executionTarget&&deviceState.executionTarget!=='local')throw fail('L’analisi repository richiede Codex su questo computer. Seleziona il dispositivo locale e aggiorna l’anteprima.',409);
+    return runCodexResult(prompt,options);
+  }
+  const result = await devices.run(prompt, {...options,returnUsage:true}); return result === null ? runCodexResult(prompt, options) : result;
+} });
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const json = (res, code, data) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
@@ -227,6 +251,8 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       const session = await identity.getSession(req);
       if (!session) throw fail('Accedi per continuare.', 401);
+      if(req.method==='GET'&&pathname==='/api/system/knowledge'){const query=url.searchParams.get('q')||'';if(query.length>12000)throw fail('Domanda troppo lunga.');json(res,200,await systemKnowledge.select(query));return;}
+      if(req.method==='GET'&&pathname==='/api/system/source'){const source=systemKnowledge.readSource(url.searchParams.get('path'),url.searchParams.has('start')?Number(url.searchParams.get('start')):undefined,url.searchParams.has('end')?Number(url.searchParams.get('end')):undefined);if(!source)throw fail('Fonte di sistema non disponibile.',404);json(res,200,source);return;}
       if(req.method==='GET'&&pathname==='/api/today'){json(res,200,await today.snapshot({scopeId:url.searchParams.get('scopeId'),projectId:url.searchParams.get('projectId')}));return;}
       if(req.method==='GET'&&pathname==='/api/memory/review'){json(res,200,await memoryReview.snapshot({scopeId:url.searchParams.get('scopeId')}));return;}
       if(req.method==='GET'&&pathname==='/api/search'){json(res,200,await studioSearch.search({scopeId:url.searchParams.get('scopeId'),query:url.searchParams.get('q')||'',...(url.searchParams.has('kinds')?{kinds:url.searchParams.get('kinds').split(',').filter(Boolean)}:{}),offset:Number(url.searchParams.get('offset')||0),limit:Number(url.searchParams.get('limit')||30)}));return;}
@@ -276,7 +302,7 @@ const server = createServer(async (req, res) => {
         if (payload.workflowId != null && typeof payload.workflowId !== 'string') throw fail('Procedura non valida.');
         if (payload.workflowId) await workspaceStore.getContext({ scopeId: payload.scopeId, query: payload.message, agentId: 'nova', workflowId: payload.workflowId });
         await providerStore.assertAllowed({ agentId: 'nova', scopeId: payload.scopeId });
-        const previewPlan=await executionPreviews.consume(payload.previewId,{kind:'chat',message:payload.message,scopeId:payload.scopeId,workflowId:payload.workflowId||null});
+        const previewPlan=await executionPreviews.consume(payload.previewId,{kind:'chat',message:payload.message,scopeId:payload.scopeId,workflowId:payload.workflowId||null,repositoryAnalysisId:payload.repositoryAnalysisId||null});
         // Reserve the chat before any other mutation can change its authorization snapshot.
         res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive' }); res.flushHeaders();
         const controller = new AbortController(); let complete = false;
@@ -292,6 +318,17 @@ const server = createServer(async (req, res) => {
       }
       changing = true;
       try {
+        if(pathname==='/api/repository-analysis/prepare'){
+          await requireIdle();await requireScope(payload.scopeId);
+          if(payload.scopeId!==(await getState()).scopeId)throw fail('L’ambito è cambiato. Riapri la selezione dei repository.',409);
+          if(Object.keys(payload).some(key=>!['scopeId','goal','targets'].includes(key)))throw fail('Richiesta di analisi repository non valida.');
+          const controller=new AbortController();let complete=false;
+          res.on('close',()=>{if(!complete)controller.abort();});
+          if(res.destroyed)controller.abort();
+          try{const result=await repositoryAnalysis.prepare({...payload,signal:controller.signal});complete=true;if(!res.destroyed)json(res,200,result);}
+          finally{complete=true;}
+          return;
+        }
         if(pathname==='/api/execution/preview'){await requireIdle();json(res,200,await executionPreviews.preview(payload));return;}
         if(pathname==='/api/budgets'){
           await requireIdle();

@@ -281,6 +281,18 @@ export function createSourceStore({ storage, workspace, mode = 'local', allowedR
     snapshot: async ({ scopeId }: { scopeId: string }) => { await scope(scopeId); return serial(async () => ({ sources: (await load()).records.filter(item => item.scopeId === scopeId).map(metadata), connectors: clone(connectors), limits: { maxDocumentBytes, maxTextChars, maxRecords, maxFolderFiles: 60 } })); },
     detail: async ({ id, scopeId }: { id: string; scopeId: string }) => { await scope(scopeId); return serial(async () => detail(find(await load(), id, scopeId))); },
     importText: async ({ scopeId, title, text, filename }: { scopeId: string; title: string; text: string; filename?: string }) => { await scope(scopeId); const content = bounded(text, maxTextChars, 'Testo'); return store(make({ scopeId, kind: 'text', title, filename: filename ? safeFilename(filename) : null, segments: segmentsFromText(content), bytes: Buffer.byteLength(content), origin: { type: 'manual' } })); },
+    // Internal composition primitive, deliberately absent from the HTTP action allowlist.
+    // Validate all documents before one durable write; never leave a partial batch.
+    importTextBatch: async (input: { scopeId: string; documents: Array<{ title: string; text: string; filename?: string }> }): Promise<SourceDetail[]> => {
+      if (!record(input) || Object.keys(input).some(key => !['scopeId', 'documents'].includes(key)) || !Array.isArray(input.documents) || !input.documents.length || input.documents.length > 5) throw fail('Gruppo di documenti non valido.');
+      await scope(input.scopeId);
+      const imported = input.documents.map(document => {
+        if (!record(document) || Object.keys(document).some(key => !['title', 'text', 'filename'].includes(key))) throw fail('Documento del gruppo non valido.');
+        const content = bounded(document.text, maxTextChars, 'Testo');
+        return make({ scopeId: input.scopeId, kind: 'text', title: document.title, filename: document.filename === undefined ? null : safeFilename(document.filename), segments: segmentsFromText(content), bytes: Buffer.byteLength(content), origin: { type: 'manual' } });
+      });
+      return serial(async () => { await scope(input.scopeId); const state = await load(); state.records.push(...imported); await save(state); return imported.map(detail); });
+    },
     importDocument: async ({ scopeId, title, filename, mimeType, dataBase64, signal }: { scopeId: string; title: string; filename: string; mimeType: string; dataBase64: string; signal?: AbortSignal }) => { await scope(scopeId); safeFilename(filename); if (typeof dataBase64 !== 'string' || dataBase64.length > Math.ceil(maxDocumentBytes / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(dataBase64)) throw fail('Documento codificato non valido o troppo grande.', 'SOURCE_TOO_LARGE', 413); const data = Buffer.from(dataBase64, 'base64'); if (data.toString('base64') !== dataBase64) throw fail('Codifica documento non valida.'); return store(make({ scopeId, kind: 'document', title, filename, segments: await extract(data, mimeType, filename, signal), bytes: data.length, origin: { type: 'manual' } })); },
     importUrl: async (input: { scopeId: string; url: string; title?: string; signal?: AbortSignal }) => { await scope(input.scopeId); return store(await fromUrl(input)); },
     importGitHub: async (input: GitHubSourceInput) => { await scope(input.scopeId); return store(await fromGitHub(input)); },

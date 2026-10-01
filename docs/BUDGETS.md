@@ -26,7 +26,9 @@ The existing global ledger is migrated additively. Historical records without pr
 
 The settings budget panel selects a project and optionally a text or repository assignment. It reports actual used/remaining call counts, the lifetime limit, and the global daily allowance. Changes use optimistic versions; stale saves are rejected so one settings screen cannot overwrite another's change silently. Repository revisions appear under one original assignment budget.
 
-Only provider-reported input and output token counts are recorded. Missing token counts remain `null`, with explicit counts of calls lacking each metric. A partial sum is not presented as complete. Local/remote Codex token metrics may be unknown. No monetary bill, credit balance, or currency conversion is guessed.
+Only provider-reported input and output token counts are recorded. Local Codex and updated paired workers report valid counts from the CLI's `turn.completed` event. Missing or malformed reports, legacy workers, older saved calls, and failed or interrupted executions can still have unknown metrics. Missing token counts remain `null`, with explicit counts of calls lacking each metric. A partial sum is not presented as complete. No monetary bill, credit balance, or currency conversion is guessed.
+
+The [system knowledge preview](SYSTEM_AWARENESS.md) also supplies each agent's usage in the active scope and, when selected, project. These counts cover retained history before dispatch. They are distinct from the installation-wide daily allowance and do not include the response about to be generated.
 
 Before an explicit start, `governance.preflight({...trustedTarget, requiredCalls})` reports all applicable ceilings, available calls, and blocking limit codes. This is a read-only advisory check, not a reservation or a guarantee that capacity will remain available. Each actual dispatch performs its own atomic check. A parallel start or a settings change can exhaust capacity after preview; in that case the next call stops before contacting the AI service.
 

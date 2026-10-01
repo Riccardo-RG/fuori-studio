@@ -17,6 +17,7 @@ async function fixture(t) {
   const fakeCodex = join(directory, 'fake-codex'), log = join(directory, 'prompts.jsonl');
   await writeFile(fakeCodex, `#!${process.execPath}
 const fs=require('node:fs');
+if(process.argv.includes('app-server'))process.exit(1);
 if(process.argv.includes('login')){console.log('Logged in using ChatGPT');process.exit(0);}
 let prompt='';process.stdin.on('data',value=>prompt+=value);process.stdin.on('end',()=>{
   const router=process.argv.includes('--output-schema');

@@ -16,9 +16,9 @@ function fixture(options = {}) {
     const invite = await hub.mutate('pair', { name: 'Mac personale', scopeIds: ['development'], capabilities: ['execute', 'sync'], ...extra });
     return { invite, ...(await hub.pair({ code: invite.code })) };
   }
-  async function start(scopeId = 'development') {
+  async function start(scopeId = 'development', options = {}) {
     const controller = new AbortController();
-    const result = hub.run('Private task prompt', { scopeId, signal: controller.signal }).then(text => ({ text }), error => ({ error }));
+    const result = hub.run('Private task prompt', { ...options, scopeId, signal: controller.signal }).then(result => typeof result === 'string' ? { text: result } : result, error => ({ error }));
     for (let i = 0; i < 100; i += 1) {
       if (value?.jobs?.some(job => job.status === 'queued')) return { result, controller };
       await new Promise(resolve => setTimeout(resolve, 1));
@@ -80,6 +80,26 @@ test('a job is addressed to one device and accepts exactly one matching lease re
   assert.equal(f.state.jobs[0].prompt, undefined);
   assert.equal(f.state.jobs[0].text, undefined);
   assert.equal(f.state.jobs[0].leaseHash, undefined);
+});
+
+test('remote usage survives the lease boundary with only validated counts and supports older workers', async () => {
+  const f = fixture(), worker = await f.pair();
+  await f.hub.mutate('target', { id: worker.deviceId });
+  for (const [usage, expected] of [
+    [{ inputTokens: 45, outputTokens: 0, privateMetadata: 'PRIVATE_USAGE_SECRET' }, { inputTokens: 45, outputTokens: 0 }],
+    [undefined, { inputTokens: null, outputTokens: null }],
+    [{ inputTokens: '45', outputTokens: -1 }, { inputTokens: null, outputTokens: null }],
+    [{ inputTokens: 0.5, outputTokens: Number.MAX_SAFE_INTEGER + 1 }, { inputTokens: null, outputTokens: null }],
+    [{ inputTokens: 5 }, { inputTokens: 5, outputTokens: null }],
+  ]) {
+    const task = await f.start('development', { returnUsage: true });
+    const { job } = await f.hub.claim(worker.token);
+    await f.hub.finish(worker.token, { id: job.id, lease: job.lease, text: 'Completed result', usage });
+    assert.doesNotMatch(JSON.stringify(f.state), /PRIVATE_USAGE_SECRET/);
+    assert.deepEqual(await task.result, { text: 'Completed result', usage: expected });
+    assert.ok(f.state.jobs.every(item => item.usage === undefined));
+  }
+  assert.equal(await fixture().hub.run('local prompt', { scopeId: 'development', returnUsage: true }), null);
 });
 
 test('heartbeats renew only an active lease; expired work is not reclaimed or retried', async () => {

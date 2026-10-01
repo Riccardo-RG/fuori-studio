@@ -20,6 +20,7 @@ test('HTTP repository workflow preserves dirty source, captures real checks and 
   await writeFile(join(repo, 'value.mjs'), 'export const value = 999; // owner uncommitted edit\n');
   await writeFile(bin, `#!${process.execPath}\nconst fs=require('node:fs'), cp=require('node:child_process'), path=require('node:path');
 const args=process.argv.slice(2), at=args.indexOf('-C'), cwd=at>=0?args[at+1]:process.cwd();
+if(args.includes('app-server'))process.exit(1);
 if(args.includes('login')){console.log('Logged in using ChatGPT');process.exit(0);}
 if(args[0]==='sandbox'){const split=args.indexOf('--');const child=cp.spawnSync(args[split+1],args.slice(split+2),{cwd,env:process.env,encoding:'utf8'});process.stdout.write(child.stdout||'');process.stderr.write(child.stderr||'');process.exit(child.status??1);}
 let input='';process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{if(fs.existsSync(path.join(cwd,'value.mjs')))fs.writeFileSync(path.join(cwd,'value.mjs'),'export const value = 2;\\n');console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Modifica preparata; verificare i risultati registrati.'}}));console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:10,output_tokens:5}}));});\n`, { mode: 0o700 });

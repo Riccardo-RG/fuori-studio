@@ -23,6 +23,7 @@ test('HTTP operations cover reviewed task versions, provider boundaries, protect
   const binary = join(directory, 'codex-stub'); const prompts = join(directory, 'prompts.jsonl');
   await writeFile(binary, `#!${process.execPath}
 const fs = require('node:fs');
+if (process.argv.includes('app-server')) process.exit(1);
 if (process.argv.includes('login')) { console.log('Logged in using ChatGPT'); process.exit(0); }
 let prompt = '';
 process.stdin.on('data', data => prompt += data);

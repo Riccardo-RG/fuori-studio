@@ -13,6 +13,7 @@ test('HTTP and chat use isolated durable scope context and block unauthorized ha
   const prompts = join(directory, 'prompts.jsonl');
   await writeFile(bin, `#!/usr/bin/env node
 const fs = require('fs');
+if(process.argv.includes('app-server'))process.exit(1);
 if(process.argv.includes('login')){console.log('Logged in using ChatGPT');process.exit(0);}
 let prompt='';process.stdin.on('data',d=>prompt+=d);process.stdin.on('end',()=>{
 fs.appendFileSync(process.env.TEST_PROMPTS,JSON.stringify({prompt})+'\\n');

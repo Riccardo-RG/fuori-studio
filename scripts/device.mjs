@@ -6,7 +6,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { createArchive } from '../lib/archive.mjs';
 import { acquireInstanceLock } from '../lib/instance-lock.mjs';
 import { deviceRequest, trustedOrigin } from '../lib/sync.mjs';
-import { codexStatus, runCodex, shutdownCodex } from '../lib/codex.mjs';
+import { codexStatus, runCodexResult, shutdownCodex } from '../lib/codex.mjs';
 import { createRepositoryRuntime } from '../lib/repository-runtime.mjs';
 import { createRepositoryWorker } from '../lib/repository-worker.ts';
 
@@ -106,7 +106,7 @@ try {
         finally { renewing = false; }
       }, 8000);
       let result;
-      try { result = { text: await runCodex(job.prompt, { schema: job.schema, signal: controller.signal }) }; }
+      try { result = await runCodexResult(job.prompt, { schema: job.schema, signal: controller.signal }); }
       catch { result = { error: true }; }
       finally { clearInterval(heartbeat); shutdown.signal.removeEventListener('abort', stop); }
       try { await request(connection, '/api/device/result', { id: job.id, lease: job.lease, ...result }); console.log(result.error ? 'Incarico interrotto.' : 'Risposta consegnata.'); }

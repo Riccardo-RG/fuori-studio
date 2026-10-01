@@ -6,6 +6,7 @@ import search from './locales/search.en.js';
 import workflowFields from './locales/workflow-fields.en.js';
 import budgets from './locales/budgets.en.js';
 import executionPreview from './locales/execution-preview.en.js';
+import repositoryAnalysis from './locales/repository-analysis.en.js';
 import githubChecks from './locales/github-checks.en.js';
 import productivity from './locales/productivity.en.js';
 import core from './locales/core.en.js';
@@ -16,7 +17,7 @@ import exploration from './locales/exploration.en.js';
 import agentCapabilities from './locales/agent-capabilities.en.js';
 
 // Source-language keys are application copy, never values read from the archive.
-export const english = Object.freeze({...conversationTasks,...today,...memoryReview,...resultInsights,...search,...workflowFields,...budgets,...executionPreview,...githubChecks, ...productivity, ...core, ...workspace, ...workflows, ...experience, ...exploration, ...agentCapabilities});
+export const english = Object.freeze({...conversationTasks,...today,...memoryReview,...resultInsights,...search,...workflowFields,...budgets,...executionPreview,...repositoryAnalysis,...githubChecks, ...productivity, ...core, ...workspace, ...workflows, ...experience, ...exploration, ...agentCapabilities});
 export const LANGUAGE_KEY = 'fuori-studio-language';
 export const languages = Object.freeze(['it', 'en']);
 const listeners = new Set(), bindings = new Map();

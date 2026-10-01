@@ -1,5 +1,14 @@
 # HTTP API
 
+## Operational self-knowledge
+
+The existing owner session, exact-origin and Host checks apply to these read-only endpoints. They do not invoke a model or read arbitrary filesystem paths.
+
+- `GET /api/system/knowledge?q=...` returns startup `identity`, `sourceChanged`, selected `topics`, `facts`, bounded source `evidence`, and `limitations`. The optional query is at most 12,000 characters. Identity includes package version, startup Git metadata when available, capture time, and a source digest. Changes on disk do not replace captured source text; restart the server to refresh it.
+- `GET /api/system/source?path=...&start=...&end=...` returns an excerpt from an explicitly allowlisted startup source. `start` and `end` are one-based line numbers. Results include path, line range, digest, text and truncation status, capped at 60 lines and 6,000 characters. Unknown/private paths and invalid ranges return 404. No writes or arbitrary paths are supported.
+
+Execution-preview steps additionally return `systemAwareness`, containing this knowledge plus allowlisted runtime facts: execution-specific authorized capabilities, applicable app-call allowances, configured provider, and observed local Codex account-limit windows when available. Account quotas are shared across that Codex account, not scoped to a studio agent or project; API, paired-worker and unavailable quota observations remain `null`. Monetary cost and unobserved model identity are unknown. Runtime usage aggregates the entire retained ledger for the current agent and scope, and the selected project when present. The single-use preview receipt covers this data; changed quota values, usage, budgets or technical-source status require a new preview. A quota refresh timestamp alone does not invalidate identical reviewed values; the dispatched packet retains the original reviewed observation time. Chat/task results retain a bounded provenance record in `execution.systemAwareness`; plan drafts and repository editor/reviewer results retain analogous records. See [operational self-awareness](SYSTEM_AWARENESS.md).
+
 Base URL: `http://127.0.0.1:4386` (or the configured `PORT`). Local mode is single-user and loopback-only. In hybrid/online modes use the configured HTTPS origin; every owner endpoint below requires the authenticated owner session.
 
 Owner writes use `POST` and `Content-Type: application/json`. Local mode requires `X-Fuori-Studio: local`; remote mode requires the session cookie, exact `Origin` and `X-CSRF-Token` from `/api/session`. The server rejects foreign hosts/origins and browser cross-site requests. Normal JSON bodies are limited to 120,000 bytes; portable import preview allows 16 MiB, device sync 8 MiB and other worker requests 600,000 bytes. Errors return `{ "error": "..." }` with an appropriate HTTP status. Corrupt stores fail closed. Concurrent configuration changes return `409`; callers should refresh rather than blindly retry a paid operation.
@@ -46,7 +55,7 @@ A configured provider is not necessarily authenticated, funded or reachable. Cod
 
 `POST /api/conversation/scope {scopeId}` selects an existing scope. `POST /api/conversation/new {}` archives and resets the selected conversation.
 
-`POST /api/chat {message, scopeId, workflowId?, previewId}` returns Server-Sent Events. Obtain the receipt from the execution preview first. Events include `message`, `status`, `context`, `memory`, `notice`, `error`, and `done`; each event is JSON in a `data:` frame. Scope, procedure and receipt are checked before streaming begins. Chat disconnect cancels its active request. A chat message does not create a persistent assignment.
+`POST /api/chat {message, scopeId, workflowId?, repositoryAnalysisId?, previewId}` returns Server-Sent Events. Obtain the receipt from the execution preview first. Events include `message`, `status`, `context`, `memory`, `notice`, `error`, and `done`; each event is JSON in a `data:` frame. Scope, procedure, analysis identity and receipt are checked before streaming begins. Chat disconnect cancels its active request. A chat message does not create a persistent assignment. An optional `repositoryAnalysisId` selects the fixed, separately prepared analysis described below; it does not let a model select repositories or fetch new files.
 
 Chat project focus comes only from the owner's execution preview. The selected real project's title and description are included for each authorized participant and calls count toward that project. The model cannot select or overwrite a project. New conversations have no project; legacy demo IDs and unavailable project references are ignored when restoring focus.
 
@@ -63,13 +72,15 @@ Search defaults to the supplied scope; `scopeId=*` explicitly searches all owner
 `POST /api/execution/preview` requires owner mutation authorization and an idle studio, but makes no AI call. Its target is one of:
 
 ```text
-{kind:"chat", message, scopeId, workflowId?, agentIds?, projectId?, inputValues?, expectedWorkflowVersion?, selection?}
+{kind:"chat", message, scopeId, workflowId?, repositoryAnalysisId?, agentIds?, projectId?, inputValues?, expectedWorkflowVersion?, selection?}
 {kind:"task", id, expectedVersion?, selection?}
 {kind:"repository", id, expectedVersion, selection?}
 {kind:"plan", projectId, brief, selection?}
 ```
 
 `selection` accepts `excludeMemoryIds`, `excludeSourceIds` (at most 200 unique IDs each), and the chat-only `includeHistory` boolean. Chat defaults to the required `nova` coordinator; authorized specialist IDs may be selected explicitly. Project attribution must belong to the current scope. Exclusions never expand permissions or remove necessary inherited evidence.
+
+For a repository analysis, `message.trim()` must equal its stored goal and `workflowId` must be absent or null. The three stages are fixed to `forge`, `growth`, then `nova`; arbitrary participant selection cannot change that order. History defaults to excluded and can be explicitly included with `selection.includeHistory:true`. Prepared repository sources are required evidence and cannot be excluded while reusing that analysis identity. The response includes `repositoryAnalysis` metadata and `requiredCalls:3`. Each stage exposes its actual provider/destination, sources and inherited evidence for review. Currently all three stages must use the built-in connection with both ID and type `codex`, targeting this computer. OpenAI API connections, other providers and paired workers are rejected rather than substituted. Local Codex execution still sends the reviewed context to OpenAI; it is not offline inference.
 
 The response returns a ten-minute, single-use `previewId`, `expiresAt`, work identity, participating roles, prepared context/provenance, provider/destination details and an advisory call-budget preflight. Pass `previewId` to the matching chat, task start, repository start or plan draft request. The server rebuilds and compares the prepared plan before consuming the receipt. Missing, expired, mismatched or changed previews return `409` before dispatch; clients must refresh and review. Receipts are lost on server restart. Each actual dispatch still performs its own atomic budget reservation. See [execution preview](EXECUTION_PREVIEW.md).
 
@@ -268,6 +279,32 @@ reconcile  { id, expectedVersion }
 `checks` returns an ephemeral `{repository,ref,commitSha,fetchedAt,state,complete,checks,errors}` result. Each check includes `{id,source,name,state,url?}`. Missing results remain distinct from success; unavailable or truncated groups set `complete:false`. It performs at most three fixed-host GET requests and never starts or reruns a workflow. See [GitHub checks](GITHUB_CHECKS.md).
 
 Repository names use `owner/repository`. Tokens are write-only, and publication permission is independent of read access. Preview requires a currently approved run, complete checks and the exact GitHub base; it makes no external writes. Publish creates an isolated branch and draft PR after explicit confirmation. Reconcile reads remote state after an uncertain result; it does not blindly resend writes. GitHub cannot atomically pin a PR's target branch against concurrent changes, so an advanced base is reported for renewed review. No merge endpoint is exposed. See [GitHub operation](GITHUB.md).
+
+## Read-only repository analysis
+
+Status: the backend/API and browser entry points are implemented, with injected-fixture and fake-provider verification. These checks do not establish that a real GitHub account or AI destination is configured or has been exercised. The browser entry points are **Analizza repository** in chat and **Confronta repository** in the GitHub panel. See [the analysis workflow and limits](REPOSITORY_ANALYSIS.md).
+
+`POST /api/repository-analysis/prepare` accepts only:
+
+```json
+{
+  "scopeId": "business",
+  "goal": "Compare the selected products and recommend the next priorities.",
+  "targets": [
+    { "connectionId": "connection-id", "repository": "owner/product", "ref": "main" }
+  ]
+}
+```
+
+The owner mutation/CSRF boundary and idle-studio requirement apply. `scopeId` must be the current conversation's active operative scope. `goal` is nonempty and at most 6,000 characters. `targets` contains one to five distinct `owner/repository` names with explicitly authorized connection IDs; optional `ref` is a branch, tag or commit, otherwise the repository's default branch is resolved. Connection scope and repository grants are checked before reading and again before persistence. Preparation uses bounded fixed-host GitHub GET requests, makes no AI call and reserves no AI budget.
+
+The response is `{id,scopeId,goal,createdAt,repositories}`. Each repository includes the resolved ref/commit, immutable URL, connection ID/version, coverage, file paths/blob hashes/line ranges/truncation flags, and the imported source's ID/scope/title/version/digest. It excludes credentials and duplicated source bodies. One bounded source document per repository is imported into the encrypted Sources archive as an atomic batch; analysis metadata is saved separately. Cancelling the later preview, disconnecting, or a metadata-write failure after source import does not roll back those documents. No files, branches, PRs or tests are written or executed on GitHub.
+
+The scanner retains at most 4,000 tree entries and 12 file excerpts per repository, at most 2,000 characters per excerpt and 8,000 excerpt characters per repository. Assembled documents are bounded to 12,000 characters each and 50,000 characters across the selection. Coverage reports observed `treeEntries`, `eligibleFiles`, `readFiles`, `omittedFiles` and `treeTruncated`; it does not claim complete coverage of a truncated tree. The analysis ledger holds at most 40 preparations and refuses additional entries without evicting user documents.
+
+After preparation, request a chat execution preview with the returned `repositoryAnalysisId`, the stored goal as `message`, and the same scope. Review each destination and all required source material, then pass the matching ID and receipt to `/api/chat`. The fixed sequence is technical analysis (`forge`), product/business analysis (`growth`), and synthesis (`nova`), with three model calls on a fully completed run. The preview and dispatch require the built-in `codex` connection on this computer; API connections including OpenAI, other providers and paired workers are not allowed for this mode. Nothing silently reassigns an agent or changes an execution target. A failed or cancelled stage stops later stages; completed messages remain recorded and no fallback or automatic retry occurs. Every actual dispatch still checks provider/source permissions and reserves its applicable call budget.
+
+Connection grants/version and source current status/version/digest are revalidated when building or consuming the preview and before every stage. Changed or missing evidence invalidates reuse; a new preparation is required for a changed goal or refreshed code. Revoking the GitHub connection blocks reuse of the prepared analysis but does not delete already imported local sources. Generic Sources retrieval retains its normal local-snapshot semantics until those documents are removed. History is excluded by default; opting in remains subject to the normal scope, source and handoff checks. `importTextBatch` is an internal source-store operation and is not a public `/api/sources` action.
 
 ## Memory evaluation
 
